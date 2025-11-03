@@ -1,0 +1,25 @@
+# Dependency directories
+node_modules
+
+# Nuxt directories
+.nuxt
+.output
+dist
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables file
+.env
