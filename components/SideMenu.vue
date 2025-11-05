@@ -62,19 +62,29 @@ const bottomMenuItems = [
         </div>
 
         <!-- Search -->
-        <div class="relative p-2 mt-4 w-full" @click.stop v-show="!isCollapsed">
-            <div class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <img :src="SearchIcon" class="w-5 h-5" />
+        <div class="w-full" @click.stop>
+            <div
+                class="flex items-center mx-2 px-2 py-3 rounded-md"
+                :class="{ 'bg-[#3a3a3a]': !isCollapsed }"
+            >
+                <div class="flex items-center justify-center w-8 h-8 flex-shrink-0">
+                    <img :src="SearchIcon" class="w-6 h-6" />
+                </div>
+                <input
+                    type="text"
+                    class="text-white bg-transparent focus:outline-none transition-all duration-200"
+                    :class="{
+                        'w-0 opacity-0': isCollapsed,
+                        'w-full ml-4 opacity-100': !isCollapsed
+                    }"
+                    placeholder="Search"
+                    :disabled="isCollapsed"
+                />
             </div>
-            <input
-                type="text"
-                class="w-full py-2 pl-10 pr-4 text-white bg-[#3a3a3a] rounded-md focus:outline-none"
-                placeholder="Search"
-            />
         </div>
 
         <!-- Menu Items -->
-        <nav class="flex-1 mt-6 w-full" @click.stop>
+        <nav class="flex-1 w-full" @click.stop>
             <ul>
                 <MenuItem v-for="item in menuItems" :key="item.name" :item="item" :is-collapsed="isCollapsed" />
             </ul>
