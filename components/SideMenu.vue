@@ -47,17 +47,17 @@ const bottomMenuItems = [
 <template>
     <aside
         class="relative flex flex-col h-screen text-white bg-[#2C2C2C] transition-all duration-300 ease-in-out"
-        :class="[isCollapsed ? 'w-20 items-center' : 'w-64', isCollapsed ? 'cursor-pointer' : 'cursor-default']"
+        :class="[isCollapsed ? 'w-[60px] items-center' : 'w-64', isCollapsed ? 'cursor-pointer' : 'cursor-default']"
         @click="isCollapsed ? toggleMenu() : null"
     >
         <!-- Header -->
-        <div class="flex items-center p-2 bg-[#8A2BE2] w-full" :class="[isCollapsed ? 'justify-center' : 'justify-between']" @click.stop>
+        <div class="flex items-center p-2 bg-[#8A2BE2] w-full relative" :class="[isCollapsed ? 'justify-center' : 'justify-between']" @click.stop>
             <div class="flex items-center overflow-hidden">
                 <img :src="DashboardIcon" class="w-6 h-6 flex-shrink-0" />
                 <span class="font-bold whitespace-nowrap transition-all duration-200" :class="[isCollapsed ? 'opacity-0 w-0 ml-0' : 'opacity-100 w-auto ml-2']">Managed</span>
             </div>
-            <button class="p-1 cursor-pointer" @click="toggleMenu">
-                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300" :class="{'rotate-180': isCollapsed}" />
+            <button class="cursor-pointer absolute right-0" :class="[isCollapsed ? 'right-0' : 'right-2']" @click="toggleMenu">
+                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300" :class="[isCollapsed ? 'rotate-0' : 'rotate-180']" />
             </button>
         </div>
 

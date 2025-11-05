@@ -1,9 +1,9 @@
 <template>
-  <div class="flex">
-    <SideMenu @update:collapsed="isMenuCollapsed = $event" />
+  <div class="relative min-h-screen">
+    <SideMenu @update:collapsed="isMenuCollapsed = $event" class="fixed top-0 left-0 h-full z-10" />
     <main
-      class="flex-1 p-10 transition-all duration-300 ease-in-out"
-      :style="{ marginLeft: isMenuCollapsed ? '80px' : '256px' }"
+      class="p-10 transition-all duration-300 ease-in-out"
+      :style="{ paddingLeft: isMenuCollapsed ? '60px' : '256px' }"
     >
       <h1 class="text-4xl font-bold">Main Content</h1>
     </main>
