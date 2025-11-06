@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 
 import MenuItem from './MenuItem.vue';
 import DashboardIcon from '~/assets/images/dashboard-fill.svg';
+import HideLeftSideBarIcon from '~/assets/images/hide-left-side-bar-fill.svg';
 import ArrowLeftIcon from '~/assets/images/arrow-left-s-line.svg';
 import SearchIcon from '~/assets/images/search-line.svg';
 import HomeIcon from '~/assets/images/home-5-fill.svg';
@@ -19,8 +20,12 @@ const isCollapsed = ref(true);
 
 const emit = defineEmits(['update:collapsed']);
 
-function toggleMenu() {
-  isCollapsed.value = !isCollapsed.value;
+function openMenu() {
+  isCollapsed.value = false;
+}
+
+function closeMenu() {
+  isCollapsed.value = true;
 }
 
 watch(isCollapsed, (newValue) => {
@@ -48,16 +53,20 @@ const bottomMenuItems = [
     <aside
         class="relative flex flex-col h-screen text-white bg-[#2C2C2C] transition-all duration-300 ease-in-out"
         :class="[isCollapsed ? 'w-[60px] items-center' : 'w-64', isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
-        @click="isCollapsed ? toggleMenu() : null"
     >
         <!-- Header -->
-        <div class="flex items-center p-3 bg-[#8A2BE2] w-full relative" :class="[isCollapsed ? 'justify-center cursor-e-resize' : 'justify-between cursor-default']" @click.stop>
+        <div class="flex items-center p-3 bg-[#8A2BE2] w-full relative"
+            :class="[isCollapsed ? 'justify-center cursor-e-resize' : 'justify-between cursor-default']"
+            @click="isCollapsed ? openMenu() : null">
             <div class="flex items-center overflow-hidden">
                 <img :src="DashboardIcon" class="w-6 h-6 flex-shrink-0" />
                 <span class="font-bold whitespace-nowrap transition-all duration-200" :class="[isCollapsed ? 'opacity-0 w-0 ml-0' : 'opacity-100 w-auto ml-2']">Managed</span>
             </div>
-            <button class=" absolute" :class="[isCollapsed ? '-right-[4px] cursor-e-resize' : 'right-2 cursor-w-resize']" @click="toggleMenu">
-                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300" :class="[isCollapsed ? 'rotate-0' : 'rotate-180']" />
+            <button v-if="!isCollapsed" class="absolute right-2 cursor-pointer" @click.stop="closeMenu">
+                <img :src="HideLeftSideBarIcon" class="w-6 h-6" />
+            </button>
+            <button v-else class="absolute -right-[4px] cursor-e-resize" @click.stop="openMenu">
+                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300 rotate-180" />
             </button>
         </div>
 
