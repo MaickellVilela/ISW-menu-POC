@@ -1,6 +1,6 @@
 <template>
   <li>
-    <a href="#" class="flex items-center mx-2 px-2 py-3 rounded-md hover:bg-[#3a3a3a]">
+    <a href="#" class="flex items-center px-3 py-2 hover:bg-[#3a3a3a]">
       <div class="flex items-center justify-center w-8 h-8 flex-shrink-0">
         <img :src="item.icon" class="flex-shrink-0" :class="[item.isAvatar ? 'w-8 h-8 rounded-full' : 'w-6 h-6']" />
       </div>

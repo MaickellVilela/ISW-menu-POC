@@ -47,35 +47,35 @@ const bottomMenuItems = [
 <template>
     <aside
         class="relative flex flex-col h-screen text-white bg-[#2C2C2C] transition-all duration-300 ease-in-out"
-        :class="[isCollapsed ? 'w-[60px] items-center' : 'w-64', isCollapsed ? 'cursor-pointer' : 'cursor-default']"
+        :class="[isCollapsed ? 'w-[60px] items-center' : 'w-64', isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
         @click="isCollapsed ? toggleMenu() : null"
     >
         <!-- Header -->
-        <div class="flex items-center p-2 bg-[#8A2BE2] w-full relative" :class="[isCollapsed ? 'justify-center' : 'justify-between']" @click.stop>
+        <div class="flex items-center p-3 bg-[#8A2BE2] w-full relative" :class="[isCollapsed ? 'justify-center cursor-e-resize' : 'justify-between cursor-default']" @click.stop>
             <div class="flex items-center overflow-hidden">
                 <img :src="DashboardIcon" class="w-6 h-6 flex-shrink-0" />
                 <span class="font-bold whitespace-nowrap transition-all duration-200" :class="[isCollapsed ? 'opacity-0 w-0 ml-0' : 'opacity-100 w-auto ml-2']">Managed</span>
             </div>
-            <button class="cursor-pointer absolute right-0" :class="[isCollapsed ? 'right-0' : 'right-2']" @click="toggleMenu">
+            <button class=" absolute" :class="[isCollapsed ? '-right-[4px] cursor-e-resize' : 'right-2 cursor-w-resize']" @click="toggleMenu">
                 <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300" :class="[isCollapsed ? 'rotate-0' : 'rotate-180']" />
             </button>
         </div>
 
         <!-- Search -->
-        <div class="w-full" @click.stop>
+        <div class="w-full px-3 py-2" @click.stop>
             <div
-                class="flex items-center mx-2 px-2 py-3 rounded-md"
+                class="flex items-center rounded-md"
                 :class="{ 'bg-[#3a3a3a]': !isCollapsed }"
             >
                 <div class="flex items-center justify-center w-8 h-8 flex-shrink-0">
-                    <img :src="SearchIcon" class="w-6 h-6" />
+                    <img :src="SearchIcon" class="w-4 h-4" />
                 </div>
                 <input
                     type="text"
                     class="text-white bg-transparent focus:outline-none transition-all duration-200"
                     :class="{
                         'w-0 opacity-0': isCollapsed,
-                        'w-full ml-4 opacity-100': !isCollapsed
+                        'w-full pl-2 opacity-100': !isCollapsed
                     }"
                     placeholder="Search"
                     :disabled="isCollapsed"
