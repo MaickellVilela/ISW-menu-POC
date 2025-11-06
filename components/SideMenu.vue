@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 
 import MenuItem from './MenuItem.vue';
 import DashboardIcon from '~/assets/images/dashboard-fill.svg';
@@ -17,6 +17,7 @@ import HelpIcon from '~/assets/images/question-line.svg';
 import AvatarIcon from '~/assets/images/Avatar.svg';
 
 const isCollapsed = ref(true);
+const searchInput = ref<HTMLInputElement | null>(null);
 
 const emit = defineEmits(['update:collapsed']);
 
@@ -26,6 +27,13 @@ function openMenu() {
 
 function closeMenu() {
   isCollapsed.value = true;
+}
+
+function openMenuAndFocusSearch() {
+  openMenu();
+  nextTick(() => {
+    searchInput.value?.focus();
+  });
 }
 
 watch(isCollapsed, (newValue) => {
@@ -66,7 +74,7 @@ const bottomMenuItems = [
                 <img :src="HideLeftSideBarIcon" class="w-6 h-6" />
             </button>
             <button v-else class="absolute -right-[4px] cursor-e-resize" @click.stop="openMenu">
-                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300 rotate-180" />
+                <img :src="ArrowLeftIcon" class="w-6 h-6 transition-transform duration-300" />
             </button>
         </div>
 
@@ -76,10 +84,11 @@ const bottomMenuItems = [
                 class="flex items-center rounded-md"
                 :class="{ 'bg-[#3a3a3a]': !isCollapsed }"
             >
-                <div class="flex items-center justify-center w-8 h-8 flex-shrink-0">
+                <div class="flex items-center justify-center w-8 h-8 flex-shrink-0 cursor-pointer" @click="isCollapsed ? openMenuAndFocusSearch() : null">
                     <img :src="SearchIcon" class="w-4 h-4" />
                 </div>
                 <input
+                    ref="searchInput"
                     type="text"
                     class="text-white bg-transparent focus:outline-none transition-all duration-200"
                     :class="{
