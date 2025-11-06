@@ -64,7 +64,7 @@ const bottomMenuItems = [
     >
         <!-- Header -->
         <div class="flex items-center p-3 bg-[#8A2BE2] w-full relative"
-            :class="[isCollapsed ? 'justify-center cursor-e-resize' : 'justify-between cursor-default']"
+            :class="[isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
             @click="isCollapsed ? openMenu() : null">
             <div class="flex items-center overflow-hidden">
                 <img :src="DashboardIcon" class="w-6 h-6 flex-shrink-0" />
