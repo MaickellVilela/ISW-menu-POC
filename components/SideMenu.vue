@@ -93,11 +93,13 @@ const bottomMenuItems = [
         </div>
 
         <!-- Menu Items -->
-        <nav class="flex-1 w-full" @click.stop>
+        <nav class="w-full" @click.stop>
             <ul>
                 <MenuItem v-for="item in menuItems" :key="item.name" :item="item" :is-collapsed="isCollapsed" />
             </ul>
         </nav>
+
+        <div class="flex-1 h-full w-full" @click.stop="[isCollapsed ? openMenu() : null]"></div>
 
         <!-- Bottom Menu Items -->
         <div @click.stop class="w-full">
