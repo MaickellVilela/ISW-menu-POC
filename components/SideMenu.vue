@@ -59,18 +59,18 @@ const bottomMenuItems = [
 
 <template>
     <aside
-        class="relative flex flex-col h-screen text-white bg-[#2C2C2C] transition-all duration-300 ease-in-out"
-        :class="[isCollapsed ? 'w-[60px] items-center' : 'w-64', isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
+        class="relative flex flex-col h-screen text-white bg-[#25262E] transition-all duration-300 ease-in-out"
+        :class="[isCollapsed ? 'w-14 items-center' : 'w-64', isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
     >
         <!-- Header -->
-        <div class="flex items-center p-3 bg-[#8A2BE2] w-full relative"
+        <div class="flex items-center p-3 bg-[#7A0747] w-full relative"
             :class="[isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
             @click="isCollapsed ? openMenu() : null">
             <div class="flex items-center overflow-hidden">
                 <img :src="DashboardIcon" class="w-6 h-6 flex-shrink-0" />
                 <span class="font-bold whitespace-nowrap transition-all duration-200" :class="[isCollapsed ? 'opacity-0 w-0 ml-0' : 'opacity-100 w-auto ml-2']">Managed</span>
             </div>
-            <button v-if="!isCollapsed" class="absolute right-2 cursor-pointer" @click.stop="closeMenu">
+            <button v-if="!isCollapsed" class="absolute right-2 cursor-w-resize" @click.stop="closeMenu">
                 <img :src="HideLeftSideBarIcon" class="w-6 h-6" />
             </button>
             <button v-else class="absolute -right-[4px] cursor-e-resize" @click.stop="openMenu">
@@ -82,7 +82,7 @@ const bottomMenuItems = [
         <div class="w-full px-3 py-2" @click.stop>
             <div
                 class="flex items-center rounded-md"
-                :class="{ 'bg-[#3a3a3a]': !isCollapsed }"
+                :class="{ 'bg-[#181818] border border-[#454545]': !isCollapsed }"
             >
                 <div class="flex items-center justify-center w-8 h-8 flex-shrink-0 cursor-pointer" @click="isCollapsed ? openMenuAndFocusSearch() : null">
                     <img :src="SearchIcon" class="w-4 h-4" />
