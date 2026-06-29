@@ -63,7 +63,7 @@ const bottomMenuItems = [
         :class="[isCollapsed ? 'w-14 items-center' : 'w-64', isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
     >
         <!-- Header -->
-        <div class="flex items-center p-3 bg-[#7A0747] w-full relative"
+        <div class="flex items-center p-3 bg-[rgb(59,23,112)] w-full relative"
             :class="[isCollapsed ? 'cursor-e-resize' : 'cursor-default']"
             @click="isCollapsed ? openMenu() : null">
             <div class="flex items-center overflow-hidden">
