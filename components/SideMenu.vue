@@ -45,7 +45,7 @@ const menuItems = [
   { name: 'All Content', icon: AllContentIcon },
   { name: 'Projects', icon: ProjectsIcon },
   { name: 'Views', icon: ViewsIcon },
-  { name: 'Data', icon: DataIcon },
+  { name: 'Data Sources', icon: DataIcon, route: '/data-sources' },
   { name: 'Business', icon: BusinessIcon },
 ];
 
