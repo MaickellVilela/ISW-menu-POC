@@ -4,17 +4,22 @@ import {
   useDataSourceCanvas,
   outputAnchor,
   collectSourceFields,
+  usedFieldValues,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
+  type CanvasNode as CanvasNodeModel,
   type SourceItem,
   type Point,
 } from '~/composables/useDataSourceCanvas';
 import CanvasNode from './CanvasNode.vue';
 import ConnectionLines from './ConnectionLines.vue';
+import JoinVennIcon from './JoinVennIcon.vue';
 
 const SURFACE_WIDTH = 2400;
 const SURFACE_HEIGHT = 1600;
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 1.6;
 
 const {
   nodes,
@@ -29,12 +34,14 @@ const {
   addCondition,
   updateCondition,
   removeCondition,
+  toggleCollapse,
   removeNode,
   clear,
 } = useDataSourceCanvas();
 
 const surface = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
+const zoom = ref(1);
 
 type Interaction =
   | { mode: 'move'; id: string; offsetX: number; offsetY: number }
@@ -52,6 +59,7 @@ const tempLine = computed(() => {
 });
 
 const hasContent = computed(() => nodes.value.some((node) => node.type !== 'output'));
+const usedValues = computed(() => usedFieldValues(nodes.value));
 
 /* ---------------------------- derived props ------------------------------ */
 
@@ -62,8 +70,43 @@ function labelFor(id: string | undefined): string {
   return node.type === 'join' ? 'Join result' : node.label;
 }
 
-function fieldsFor(id: string | undefined): string[] {
+function fieldsFor(id: string | undefined) {
   return collectSourceFields(nodes.value, id);
+}
+
+function activeFieldsFor(node: CanvasNodeModel): string[] {
+  if (node.type !== 'table') return [];
+  return (node.fields ?? [])
+    .filter((field) => usedValues.value.has(`${node.label}.${field.name}`))
+    .map((field) => field.name);
+}
+
+/* ------------------------------- zoom ------------------------------------ */
+
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
+function setZoom(value: number): void {
+  zoom.value = Math.round(clampZoom(value) * 100) / 100;
+}
+
+function zoomIn(): void {
+  setZoom(zoom.value + 0.1);
+}
+
+function zoomOut(): void {
+  setZoom(zoom.value - 0.1);
+}
+
+function resetZoom(): void {
+  setZoom(1);
+}
+
+function onWheel(event: WheelEvent): void {
+  if (!event.ctrlKey && !event.metaKey) return;
+  event.preventDefault();
+  setZoom(zoom.value - event.deltaY * 0.002);
 }
 
 /* ------------------------------ coordinates ------------------------------ */
@@ -71,7 +114,7 @@ function fieldsFor(id: string | undefined): string[] {
 function toSurfaceCoords(event: { clientX: number; clientY: number }): Point {
   const rect = surface.value?.getBoundingClientRect();
   if (!rect) return { x: 0, y: 0 };
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  return { x: (event.clientX - rect.left) / zoom.value, y: (event.clientY - rect.top) / zoom.value };
 }
 
 function nodeIdAtPoint(clientX: number, clientY: number): string | null {
@@ -171,13 +214,17 @@ function detachWindowListeners(): void {
   window.removeEventListener('pointerup', onPointerUp);
 }
 
+function onPreview(): void {
+  // Placeholder: preview action intentionally not implemented yet.
+}
+
 onBeforeUnmount(detachWindowListeners);
 </script>
 
 <template>
-  <div class="relative h-full w-full overflow-auto bg-[#FAFAFA]">
+  <div class="flex h-full w-full flex-col">
     <!-- Toolbar -->
-    <div class="sticky top-0 z-20 flex items-center justify-between border-b border-[#E2E2E2] bg-white/90 px-4 py-2 backdrop-blur">
+    <div class="z-20 flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] bg-white px-4 py-2">
       <div class="flex items-center gap-4">
         <span class="text-sm font-medium text-[#25262E]">Join Builder</span>
         <span class="flex items-center gap-3 text-[11px] text-[#6B6B6B]">
@@ -186,68 +233,115 @@ onBeforeUnmount(detachWindowListeners);
           <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-[#25262E]" /> Output</span>
         </span>
       </div>
-      <button
-        type="button"
-        class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
-        :disabled="!hasContent"
-        @click="clear"
+
+      <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-md border border-[#E2E2E2]">
+          <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom out" @click="zoomOut">−</button>
+          <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
+          <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
+        </div>
+        <button
+          type="button"
+          class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
+          :disabled="!hasContent"
+          @click="clear"
+        >
+          Clear canvas
+        </button>
+      </div>
+    </div>
+
+    <!-- Scroll viewport -->
+    <div class="relative flex-1 overflow-auto bg-[#FAFAFA]" @wheel="onWheel">
+      <!-- Sizer drives the scrollable area to match the zoomed surface -->
+      <div :style="{ width: `${SURFACE_WIDTH * zoom}px`, height: `${SURFACE_HEIGHT * zoom}px` }" />
+
+      <!-- Positioning surface (scaled) -->
+      <div
+        ref="surface"
+        class="absolute left-0 top-0 origin-top-left"
+        :class="{ 'ring-2 ring-inset ring-[#3B1770]/40': isDragOver }"
+        :style="{
+          width: `${SURFACE_WIDTH}px`,
+          height: `${SURFACE_HEIGHT}px`,
+          transform: `scale(${zoom})`,
+          backgroundImage: 'radial-gradient(#D8D8D8 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
       >
-        Clear canvas
-      </button>
-    </div>
+        <ConnectionLines
+          :connections="connections"
+          :temp-line="tempLine"
+          :width="SURFACE_WIDTH"
+          :height="SURFACE_HEIGHT"
+        />
 
-    <!-- Positioning surface -->
-    <div
-      ref="surface"
-      class="relative"
-      :class="{ 'ring-2 ring-inset ring-[#3B1770]/40': isDragOver }"
-      :style="{
-        width: `${SURFACE_WIDTH}px`,
-        height: `${SURFACE_HEIGHT}px`,
-        backgroundImage: 'radial-gradient(#D8D8D8 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
-      }"
-      @dragover="onDragOver"
-      @dragleave="onDragLeave"
-      @drop="onDrop"
-    >
-      <ConnectionLines
-        :connections="connections"
-        :temp-line="tempLine"
-        :width="SURFACE_WIDTH"
-        :height="SURFACE_HEIGHT"
-      />
+        <CanvasNode
+          v-for="node in nodes"
+          :key="node.id"
+          :node="node"
+          :is-connect-target="connectTargetId === node.id"
+          :left-label="labelFor(node.inputs?.[0])"
+          :right-label="labelFor(node.inputs?.[1])"
+          :left-fields="fieldsFor(node.inputs?.[0])"
+          :right-fields="fieldsFor(node.inputs?.[1])"
+          :active-fields="activeFieldsFor(node)"
+          :inflow-count="node.type === 'output' ? fieldsFor(node.inputs?.[0]).length : 0"
+          @start-move="onStartMove"
+          @start-connect="onStartConnect"
+          @remove="removeNode"
+          @toggle-collapse="toggleCollapse"
+          @preview="onPreview"
+          @set-join-type="setJoinType($event.id, $event.joinType)"
+          @swap-inputs="swapInputs"
+          @add-condition="addCondition"
+          @update-condition="updateCondition($event.id, $event.conditionId, $event.side, $event.value)"
+          @remove-condition="removeCondition($event.id, $event.conditionId)"
+        />
+      </div>
 
-      <CanvasNode
-        v-for="node in nodes"
-        :key="node.id"
-        :node="node"
-        :is-connect-target="connectTargetId === node.id"
-        :left-label="labelFor(node.inputs?.[0])"
-        :right-label="labelFor(node.inputs?.[1])"
-        :left-fields="fieldsFor(node.inputs?.[0])"
-        :right-fields="fieldsFor(node.inputs?.[1])"
-        :inflow-count="node.type === 'output' ? fieldsFor(node.inputs?.[0]).length : 0"
-        @start-move="onStartMove"
-        @start-connect="onStartConnect"
-        @remove="removeNode"
-        @set-join-type="setJoinType($event.id, $event.joinType)"
-        @swap-inputs="swapInputs"
-        @add-condition="addCondition"
-        @update-condition="updateCondition($event.id, $event.conditionId, $event.side, $event.value)"
-        @remove-condition="removeCondition($event.id, $event.conditionId)"
-      />
-    </div>
+      <!-- Visual empty state -->
+      <div
+        v-if="!hasContent"
+        class="pointer-events-none absolute left-1/2 top-1/2 z-10 w-[26rem] max-w-[80%] -translate-x-1/2 -translate-y-1/2"
+      >
+        <div class="rounded-xl border border-dashed border-[#C9B8EC] bg-white/80 p-6 text-center backdrop-blur">
+          <!-- Mini flow diagram -->
+          <div class="mb-5 flex items-center justify-center gap-2">
+            <div class="flex flex-col items-center gap-1">
+              <div class="flex h-10 w-14 items-center justify-center rounded-md border border-[#D8D8D8] bg-[#F7F9FC] text-[#3B6BB5]">
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M3 14h18M9 4v16" /></svg>
+              </div>
+              <span class="text-[10px] text-[#9A9A9A]">Source</span>
+            </div>
+            <svg viewBox="0 0 24 24" class="h-5 w-7 text-[#C4C4C4]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14m0 0-5-5m5 5-5 5" /></svg>
+            <div class="flex flex-col items-center gap-1">
+              <div class="flex h-10 w-14 items-center justify-center rounded-md border border-[#C9B8EC] bg-[#F5F1FC]">
+                <JoinVennIcon type="inner" :size="22" />
+              </div>
+              <span class="text-[10px] text-[#9A9A9A]">Join</span>
+            </div>
+            <svg viewBox="0 0 24 24" class="h-5 w-7 text-[#C4C4C4]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14m0 0-5-5m5 5-5 5" /></svg>
+            <div class="flex flex-col items-center gap-1">
+              <div class="flex h-10 w-14 items-center justify-center rounded-md bg-[#25262E] text-white">
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /></svg>
+              </div>
+              <span class="text-[10px] text-[#9A9A9A]">Output</span>
+            </div>
+          </div>
 
-    <!-- Empty state, anchored to the visible viewport -->
-    <div
-      v-if="!hasContent"
-      class="pointer-events-none absolute left-1/3 top-1/3 z-10 -translate-x-1/2 -translate-y-1/2 text-center"
-    >
-      <p class="text-sm font-medium text-[#6B6B6B]">Drag a data source here to begin</p>
-      <p class="mt-1 text-xs text-[#9A9A9A]">
-        Drag from an element's right handle onto another to create a join, or onto Output for the final result.
-      </p>
+          <h3 class="text-sm font-semibold text-[#25262E]">Build your join pipeline</h3>
+          <ol class="mx-auto mt-3 max-w-xs space-y-1.5 text-left text-xs text-[#6B6B6B]">
+            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">1.</span> Drag a table from the right panel onto the canvas.</li>
+            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">2.</span> Drag from a node's right handle onto another to create a join.</li>
+            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">3.</span> Pick the join type and matching fields right on the card.</li>
+            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">4.</span> Connect the final join to <span class="font-medium text-[#25262E]">Output</span>.</li>
+          </ol>
+        </div>
+      </div>
     </div>
   </div>
 </template>

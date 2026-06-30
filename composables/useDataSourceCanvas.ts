@@ -3,11 +3,25 @@ import { ref, computed, onMounted, watch, type Ref } from 'vue';
 export type CanvasNodeType = 'table' | 'join' | 'output';
 export type JoinType = 'inner' | 'left' | 'full';
 
+export interface FieldDef {
+  name: string;
+  type: string;
+}
+
 export interface SourceItem {
   key: string;
   label: string;
   description: string;
-  fields: string[];
+  fields: FieldDef[];
+}
+
+/** A selectable field in a join condition dropdown, qualified by its source entity. */
+export interface FieldOption {
+  /** Stored value, e.g. "Transactions.location_id". */
+  value: string;
+  name: string;
+  type: string;
+  entity: string;
 }
 
 export interface JoinCondition {
@@ -23,13 +37,15 @@ export interface CanvasNode {
   x: number;
   y: number;
   /** Table nodes expose the columns that joins can match on. */
-  fields?: string[];
+  fields?: FieldDef[];
   /** Join nodes: [leftId, rightId]. Output node: [sourceId]. */
   inputs?: string[];
   /** Join nodes only. */
   joinType?: JoinType;
   /** Join nodes only. */
   conditions?: JoinCondition[];
+  /** Table nodes: when true the field list is hidden (header only). */
+  collapsed?: boolean;
 }
 
 export interface Point {
@@ -51,6 +67,8 @@ export const NODE_WIDTH = 232;
 /** Vertical offsets (from a node's top) where connection ports are anchored. */
 export const PORT_DY = 46;
 export const JOIN_RIGHT_PORT_DY = 74;
+/** Header is h-9 (36px); a collapsed table anchors its port at the header's middle. */
+export const COLLAPSED_PORT_DY = 18;
 
 /** MIME type used to carry a SourceItem across the native drag-and-drop boundary. */
 export const SOURCE_DRAG_MIME = 'application/x-datasource-item';
@@ -76,7 +94,14 @@ export function createId(prefix: string): string {
 }
 
 export function createTableNode(item: SourceItem, x: number, y: number): CanvasNode {
-  return { id: createId('table'), type: 'table', label: item.label, x, y, fields: [...item.fields] };
+  return {
+    id: createId('table'),
+    type: 'table',
+    label: item.label,
+    x,
+    y,
+    fields: item.fields.map((field) => ({ ...field })),
+  };
 }
 
 export function createJoinNode(
@@ -108,7 +133,8 @@ export function isOutputNode(node: CanvasNode): boolean {
 
 /** Output port (right edge) for any node that can feed downstream. */
 export function outputAnchor(node: CanvasNode): Point {
-  return { x: node.x + NODE_WIDTH, y: node.y + PORT_DY };
+  const dy = node.type === 'table' && node.collapsed ? COLLAPSED_PORT_DY : PORT_DY;
+  return { x: node.x + NODE_WIDTH, y: node.y + dy };
 }
 
 /** Input port (left edge). Slot 1 is the Right input of a join; everything else uses slot 0. */
@@ -125,11 +151,11 @@ export function computeJoinPosition(a: CanvasNode, b: CanvasNode): Point {
   };
 }
 
-/** Collects the leaf table columns flowing out of a node as "Entity.field" strings. */
-export function collectSourceFields(nodes: CanvasNode[], id: string | undefined): string[] {
+/** Collects the leaf table columns flowing out of a node as qualified field options. */
+export function collectSourceFields(nodes: CanvasNode[], id: string | undefined): FieldOption[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const seen = new Set<string>();
-  const fields: string[] = [];
+  const fields: FieldOption[] = [];
 
   function walk(currentId: string | undefined): void {
     if (!currentId || seen.has(currentId)) return;
@@ -138,7 +164,9 @@ export function collectSourceFields(nodes: CanvasNode[], id: string | undefined)
     if (!node) return;
 
     if (node.type === 'table') {
-      for (const field of node.fields ?? []) fields.push(`${node.label}.${field}`);
+      for (const field of node.fields ?? []) {
+        fields.push({ value: `${node.label}.${field.name}`, name: field.name, type: field.type, entity: node.label });
+      }
       return;
     }
     for (const inputId of node.inputs ?? []) walk(inputId);
@@ -146,6 +174,19 @@ export function collectSourceFields(nodes: CanvasNode[], id: string | undefined)
 
   walk(id);
   return fields;
+}
+
+/** All field values currently referenced by any join condition (e.g. "Locations.id"). */
+export function usedFieldValues(nodes: CanvasNode[]): Set<string> {
+  const used = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== 'join') continue;
+    for (const condition of node.conditions ?? []) {
+      if (condition.leftField) used.add(condition.leftField);
+      if (condition.rightField) used.add(condition.rightField);
+    }
+  }
+  return used;
 }
 
 /** Derives the edges to draw, tagged by which port (left/right/output) they feed. */
@@ -319,6 +360,11 @@ export function useDataSourceCanvas() {
     }
   }
 
+  function toggleCollapse(id: string): void {
+    const node = findNode(id);
+    if (node) node.collapsed = !node.collapsed;
+  }
+
   function removeNode(id: string): void {
     nodes.value = removeNodeAndDependents(nodes.value, id);
   }
@@ -346,6 +392,7 @@ export function useDataSourceCanvas() {
     addCondition,
     updateCondition,
     removeCondition,
+    toggleCollapse,
     removeNode,
     clear,
   };

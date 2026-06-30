@@ -4,11 +4,14 @@ import {
   NODE_WIDTH,
   PORT_DY,
   JOIN_RIGHT_PORT_DY,
+  COLLAPSED_PORT_DY,
   JOIN_TYPE_LABELS,
   type CanvasNode,
+  type FieldOption,
   type JoinType,
 } from '~/composables/useDataSourceCanvas';
 import JoinVennIcon from './JoinVennIcon.vue';
+import FieldSelect from './FieldSelect.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -16,17 +19,27 @@ const props = withDefaults(
     isConnectTarget?: boolean;
     leftLabel?: string;
     rightLabel?: string;
-    leftFields?: string[];
-    rightFields?: string[];
+    leftFields?: FieldOption[];
+    rightFields?: FieldOption[];
+    activeFields?: string[];
     inflowCount?: number;
   }>(),
-  { leftLabel: '', rightLabel: '', leftFields: () => [], rightFields: () => [], inflowCount: 0 },
+  {
+    leftLabel: '',
+    rightLabel: '',
+    leftFields: () => [],
+    rightFields: () => [],
+    activeFields: () => [],
+    inflowCount: 0,
+  },
 );
 
 const emit = defineEmits<{
   (e: 'start-move', payload: { id: string; event: PointerEvent }): void;
   (e: 'start-connect', payload: { id: string; event: PointerEvent }): void;
   (e: 'remove', id: string): void;
+  (e: 'toggle-collapse', id: string): void;
+  (e: 'preview', id: string): void;
   (e: 'set-join-type', payload: { id: string; joinType: JoinType }): void;
   (e: 'swap-inputs', id: string): void;
   (e: 'add-condition', id: string): void;
@@ -38,6 +51,14 @@ const isJoin = computed(() => props.node.type === 'join');
 const isOutput = computed(() => props.node.type === 'output');
 const joinTypes: JoinType[] = ['inner', 'left', 'full'];
 const typeMenuOpen = ref(false);
+
+const activeSet = computed(() => new Set(props.activeFields));
+const outputPortDy = computed(() =>
+  props.node.type === 'table' && props.node.collapsed ? COLLAPSED_PORT_DY : PORT_DY,
+);
+const collapsedActiveFields = computed(() =>
+  (props.node.fields ?? []).filter((field) => activeSet.value.has(field.name)),
+);
 
 const baseStyle = computed(() => ({
   left: `${props.node.x}px`,
@@ -69,25 +90,53 @@ function onSelectType(joinType: JoinType): void {
     <!-- ======================= TABLE ======================= -->
     <template v-if="node.type === 'table'">
       <header
-        class="flex h-9 items-center gap-2 rounded-t-lg border-b border-[#EEE] bg-[#F7F9FC] px-2.5 cursor-grab active:cursor-grabbing"
+        class="flex h-9 items-center gap-1.5 rounded-t-lg border-b border-[#EEE] bg-[#F7F9FC] px-2 cursor-grab active:cursor-grabbing"
+        :class="{ 'rounded-b-lg border-b-0': node.collapsed && !collapsedActiveFields.length }"
         @pointerdown="emit('start-move', { id: node.id, event: $event })"
       >
-        <span class="flex h-5 w-5 items-center justify-center text-[#3B6BB5]">
+        <button
+          type="button"
+          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[#9A9A9A] hover:bg-white hover:text-[#25262E]"
+          :title="node.collapsed ? 'Expand' : 'Collapse'"
+          @pointerdown.stop
+          @click.stop="emit('toggle-collapse', node.id)"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 transition-transform" :class="{ '-rotate-90': node.collapsed }" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center text-[#3B6BB5]">
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M3 9h18M3 14h18M9 4v16" />
           </svg>
         </span>
         <span class="flex-1 truncate text-sm font-semibold text-[#25262E]">{{ node.label }}</span>
+        <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ (node.fields ?? []).length }}</span>
       </header>
-      <ul class="px-2.5 py-1.5">
+
+      <!-- Full, scrollable field list -->
+      <ul v-if="!node.collapsed" class="max-h-44 overflow-y-auto px-2 py-1.5">
         <li
           v-for="field in node.fields"
-          :key="field"
-          class="flex items-center gap-1.5 py-0.5 text-xs text-[#5A5A5A]"
+          :key="field.name"
+          class="flex items-center gap-1.5 rounded px-1 py-0.5 text-xs"
+          :class="activeSet.has(field.name) ? 'bg-[#F1ECFA]' : ''"
         >
-          <span class="h-1 w-1 rounded-full bg-[#C4C4C4]" />
-          {{ field }}
+          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="activeSet.has(field.name) ? 'bg-[#3B1770]' : 'bg-[#C4C4C4]'" />
+          <span class="flex-1 truncate" :class="activeSet.has(field.name) ? 'font-medium text-[#3B1770]' : 'text-[#5A5A5A]'">{{ field.name }}</span>
+          <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
+        </li>
+      </ul>
+
+      <!-- Collapsed: show only fields used in joins -->
+      <ul v-else-if="collapsedActiveFields.length" class="px-2 py-1.5">
+        <li
+          v-for="field in collapsedActiveFields"
+          :key="field.name"
+          class="flex items-center gap-1.5 px-1 py-0.5 text-xs"
+        >
+          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" />
+          <span class="flex-1 truncate font-medium text-[#3B1770]">{{ field.name }}</span>
+          <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
         </li>
       </ul>
     </template>
@@ -158,27 +207,23 @@ function onSelectType(joinType: JoinType): void {
           :key="condition.id"
           class="mb-1 flex items-center gap-1"
         >
-          <select
-            class="min-w-0 flex-1 rounded border border-[#E2E2E2] bg-white px-1 py-0.5 text-[11px] text-[#3B6BB5]"
-            :value="condition.leftField"
-            @pointerdown.stop
-            @click.stop
-            @change="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'leftField', value: ($event.target as HTMLSelectElement).value })"
-          >
-            <option value="">Left field…</option>
-            <option v-for="field in leftFields" :key="field" :value="field">{{ field }}</option>
-          </select>
+          <FieldSelect
+            class="flex-1"
+            :model-value="condition.leftField"
+            :options="leftFields"
+            placeholder="Left field…"
+            accent="#3B6BB5"
+            @update:model-value="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'leftField', value: $event })"
+          />
           <span class="text-[#9A9A9A]">=</span>
-          <select
-            class="min-w-0 flex-1 rounded border border-[#E2E2E2] bg-white px-1 py-0.5 text-[11px] text-[#8B5CF6]"
-            :value="condition.rightField"
-            @pointerdown.stop
-            @click.stop
-            @change="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'rightField', value: ($event.target as HTMLSelectElement).value })"
-          >
-            <option value="">Right field…</option>
-            <option v-for="field in rightFields" :key="field" :value="field">{{ field }}</option>
-          </select>
+          <FieldSelect
+            class="flex-1"
+            :model-value="condition.rightField"
+            :options="rightFields"
+            placeholder="Right field…"
+            accent="#8B5CF6"
+            @update:model-value="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'rightField', value: $event })"
+          />
           <button
             v-if="(node.conditions?.length ?? 0) > 1"
             type="button"
@@ -190,14 +235,27 @@ function onSelectType(joinType: JoinType): void {
             ×
           </button>
         </div>
-        <button
-          type="button"
-          class="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-[#3B1770] hover:underline"
-          @pointerdown.stop
-          @click.stop="emit('add-condition', node.id)"
-        >
-          <span class="text-sm leading-none">+</span> Add condition
-        </button>
+
+        <div class="mt-1 flex items-center justify-between">
+          <button
+            type="button"
+            class="flex items-center gap-1 text-[11px] font-medium text-[#3B1770] hover:underline"
+            @pointerdown.stop
+            @click.stop="emit('add-condition', node.id)"
+          >
+            <span class="text-sm leading-none">+</span> Add condition
+          </button>
+          <button
+            type="button"
+            title="Preview join result"
+            class="flex items-center gap-1 rounded border border-[#E2E2E2] px-2 py-0.5 text-[11px] font-medium text-[#5A5A5A] hover:border-[#3B1770] hover:text-[#3B1770]"
+            @pointerdown.stop
+            @click.stop="emit('preview', node.id)"
+          >
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+            Preview
+          </button>
+        </div>
       </div>
     </template>
 
@@ -256,7 +314,7 @@ function onSelectType(joinType: JoinType): void {
       title="Drag onto another element to join, or onto Output"
       class="absolute -right-1.5 h-4 w-4 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-white transition-transform hover:scale-110"
       :class="isJoin ? 'bg-[#3B1770]' : 'bg-[#3B6BB5]'"
-      :style="{ top: `${PORT_DY}px` }"
+      :style="{ top: `${outputPortDy}px` }"
       @pointerdown.stop="emit('start-connect', { id: node.id, event: $event })"
       @click.stop
     />
