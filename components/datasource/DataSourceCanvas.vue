@@ -36,6 +36,7 @@ const {
   updateCondition,
   removeCondition,
   toggleCollapse,
+  setAllCollapsed,
   removeNode,
   clear,
   loadPreset,
@@ -45,6 +46,12 @@ const surface = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
 const showDemoMenu = ref(false);
+const viewMode = ref<'expanded' | 'compact'>('expanded');
+
+function setViewMode(mode: 'expanded' | 'compact'): void {
+  viewMode.value = mode;
+  setAllCollapsed(mode === 'compact');
+}
 
 function toggleDemoMenu(): void {
   showDemoMenu.value = !showDemoMenu.value;
@@ -248,6 +255,26 @@ onBeforeUnmount(detachWindowListeners);
       </div>
 
       <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-md border border-[#E2E2E2] text-xs">
+          <button
+            type="button"
+            class="rounded-l-md px-2.5 py-1 font-medium transition-colors"
+            :class="viewMode === 'expanded' ? 'bg-[#F1ECFA] text-[#3B1770]' : 'text-[#6B6B6B] hover:text-[#3B1770]'"
+            title="Show full card details"
+            @click="setViewMode('expanded')"
+          >
+            Expanded
+          </button>
+          <button
+            type="button"
+            class="rounded-r-md border-l border-[#E2E2E2] px-2.5 py-1 font-medium transition-colors"
+            :class="viewMode === 'compact' ? 'bg-[#F1ECFA] text-[#3B1770]' : 'text-[#6B6B6B] hover:text-[#3B1770]'"
+            title="Collapse cards to headers"
+            @click="setViewMode('compact')"
+          >
+            Compact
+          </button>
+        </div>
         <div class="flex items-center rounded-md border border-[#E2E2E2]">
           <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom out" @click="zoomOut">−</button>
           <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>

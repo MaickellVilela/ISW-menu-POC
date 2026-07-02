@@ -158,6 +158,64 @@ export function computeJoinPosition(a: CanvasNode, b: CanvasNode): Point {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/* Card sizing                                                                */
+/*                                                                            */
+/* Heights are derived from the model (collapsed flag + field/condition       */
+/* counts), so nodeSize stays a pure function usable for layout math and unit  */
+/* tests. The metrics below mirror CanvasNode.vue and are kept in one place so */
+/* they can be tuned together if the card markup changes.                     */
+/* -------------------------------------------------------------------------- */
+
+/** Card header is `h-9` (36px) for every node type. */
+export const HEADER_HEIGHT = 36;
+const CARD_BORDER = 2;
+const FIELD_ROW_HEIGHT = 20;
+const FIELD_LIST_PADDING = 12;
+const FIELD_LIST_MAX_HEIGHT = 176;
+const JOIN_INPUTS_HEIGHT = 48;
+const JOIN_CONDITIONS_CHROME = 56;
+const CONDITION_ROW_HEIGHT = 34;
+const OUTPUT_BODY_HEIGHT = 48;
+
+export interface NodeSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * Estimates a card's rendered bounding box from the model alone.
+ *
+ * `activeFieldCount` covers the collapsed-table case that surfaces only the
+ * fields referenced by joins; it defaults to 0 for callers that only have the
+ * node (e.g. layout math that treats collapsed tables as header-only).
+ */
+export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
+  if (node.type === 'output') {
+    return { width: NODE_WIDTH, height: HEADER_HEIGHT + OUTPUT_BODY_HEIGHT };
+  }
+
+  if (node.type === 'table') {
+    if (node.collapsed) {
+      const body = activeFieldCount > 0 ? activeFieldCount * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING : 0;
+      return { width: NODE_WIDTH, height: HEADER_HEIGHT + body };
+    }
+    const fieldCount = node.fields?.length ?? 0;
+    const listHeight =
+      fieldCount > 0 ? Math.min(fieldCount * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING, FIELD_LIST_MAX_HEIGHT) : 0;
+    return { width: NODE_WIDTH, height: HEADER_HEIGHT + CARD_BORDER + listHeight };
+  }
+
+  // Join
+  if (node.collapsed) {
+    return { width: NODE_WIDTH, height: HEADER_HEIGHT };
+  }
+  const conditionCount = node.conditions?.length ?? 0;
+  const height =
+    HEADER_HEIGHT + CARD_BORDER + JOIN_INPUTS_HEIGHT + JOIN_CONDITIONS_CHROME + conditionCount * CONDITION_ROW_HEIGHT;
+  return { width: NODE_WIDTH, height };
+}
+
 /** Collects the leaf table columns flowing out of a node as qualified field options. */
 export function collectSourceFields(nodes: CanvasNode[], id: string | undefined): FieldOption[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -372,6 +430,14 @@ export function useDataSourceCanvas() {
     if (node) node.collapsed = !node.collapsed;
   }
 
+  /** Collapses or expands every collapsible card at once (Output has no compact form). */
+  function setAllCollapsed(collapsed: boolean): void {
+    for (const node of nodes.value) {
+      if (node.type === 'output') continue;
+      node.collapsed = collapsed;
+    }
+  }
+
   function removeNode(id: string): void {
     nodes.value = removeNodeAndDependents(nodes.value, id);
   }
@@ -406,6 +472,7 @@ export function useDataSourceCanvas() {
     updateCondition,
     removeCondition,
     toggleCollapse,
+    setAllCollapsed,
     removeNode,
     clear,
     loadPreset,
