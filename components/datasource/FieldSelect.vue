@@ -58,9 +58,6 @@ function choose(option: FieldOption): void {
       :title="selected ? selected.value : placeholder"
       @click="toggle"
     >
-      <svg viewBox="0 0 24 24" class="h-3 w-3 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />
-      </svg>
       <span class="flex-1 truncate text-left" :class="{ 'text-[#9A9A9A]': !displayLabel }">
         {{ displayLabel || placeholder }}
       </span>
