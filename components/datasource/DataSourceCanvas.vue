@@ -5,6 +5,7 @@ import {
   outputAnchor,
   collectSourceFields,
   usedFieldValues,
+  nodeWidth,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
@@ -38,6 +39,7 @@ const {
   toggleCollapse,
   setAllCollapsed,
   setNodeName,
+  setNodeWidth,
   removeNode,
   clear,
   loadPreset,
@@ -67,7 +69,8 @@ function applyPreset(preset: DemoPreset): void {
 
 type Interaction =
   | { mode: 'move'; id: string; offsetX: number; offsetY: number }
-  | { mode: 'connect'; fromId: string };
+  | { mode: 'connect'; fromId: string }
+  | { mode: 'resize'; id: string; startX: number; startWidth: number };
 
 const interaction = ref<Interaction | null>(null);
 const pointer = ref<Point>({ x: 0, y: 0 });
@@ -191,6 +194,14 @@ function onStartConnect({ id, event }: { id: string; event: PointerEvent }): voi
   attachWindowListeners();
 }
 
+function onStartResize({ id, event }: { id: string; event: PointerEvent }): void {
+  const node = findNode(id);
+  if (!node) return;
+  const { x } = toSurfaceCoords(event);
+  interaction.value = { mode: 'resize', id, startX: x, startWidth: nodeWidth(node) };
+  attachWindowListeners();
+}
+
 function onPointerMove(event: PointerEvent): void {
   if (!interaction.value) return;
   pointer.value = toSurfaceCoords(event);
@@ -201,6 +212,8 @@ function onPointerMove(event: PointerEvent): void {
       pointer.value.x - interaction.value.offsetX,
       pointer.value.y - interaction.value.offsetY,
     );
+  } else if (interaction.value.mode === 'resize') {
+    setNodeWidth(interaction.value.id, interaction.value.startWidth + (pointer.value.x - interaction.value.startX));
   } else if (interaction.value.mode === 'connect') {
     const targetId = nodeIdAtPoint(event.clientX, event.clientY);
     connectTargetId.value = targetId && targetId !== interaction.value.fromId ? targetId : null;
@@ -346,6 +359,7 @@ onBeforeUnmount(detachWindowListeners);
           :inflow-count="node.type === 'output' ? fieldsFor(node.inputs?.[0]).length : 0"
           @start-move="onStartMove"
           @start-connect="onStartConnect"
+          @start-resize="onStartResize"
           @remove="removeNode"
           @rename="setNodeName($event.id, $event.name)"
           @toggle-collapse="toggleCollapse"

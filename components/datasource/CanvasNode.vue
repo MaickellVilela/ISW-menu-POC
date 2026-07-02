@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
 import {
-  NODE_WIDTH,
   PORT_DY,
   JOIN_RIGHT_PORT_DY,
   COLLAPSED_PORT_DY,
   JOIN_COLLAPSED_LEFT_DY,
   JOIN_COLLAPSED_RIGHT_DY,
   JOIN_TYPE_LABELS,
+  nodeWidth,
   type CanvasNode,
   type FieldOption,
   type JoinType,
@@ -39,6 +39,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'start-move', payload: { id: string; event: PointerEvent }): void;
   (e: 'start-connect', payload: { id: string; event: PointerEvent }): void;
+  (e: 'start-resize', payload: { id: string; event: PointerEvent }): void;
   (e: 'remove', id: string): void;
   (e: 'rename', payload: { id: string; name: string }): void;
   (e: 'toggle-collapse', id: string): void;
@@ -90,6 +91,25 @@ function cancelEdit(): void {
   editing.value = false;
 }
 
+/*
+ * The title doubles as part of the draggable card surface. We let pointerdown
+ * bubble (so a drag can start on the title) and only treat a release as a
+ * rename click when the pointer barely moved.
+ */
+const DRAG_CLICK_THRESHOLD = 4;
+const pressOrigin = ref<{ x: number; y: number } | null>(null);
+
+function onNamePointerDown(event: PointerEvent): void {
+  pressOrigin.value = { x: event.clientX, y: event.clientY };
+}
+
+function onNameClick(event: MouseEvent): void {
+  const origin = pressOrigin.value;
+  pressOrigin.value = null;
+  if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > DRAG_CLICK_THRESHOLD) return;
+  startEdit();
+}
+
 const activeSet = computed(() => new Set(props.activeFields));
 const outputPortDy = computed(() => (props.node.collapsed ? COLLAPSED_PORT_DY : PORT_DY));
 const leftInputDy = computed(() => (props.node.collapsed ? JOIN_COLLAPSED_LEFT_DY : PORT_DY));
@@ -101,7 +121,7 @@ const collapsedActiveFields = computed(() =>
 const baseStyle = computed(() => ({
   left: `${props.node.x}px`,
   top: `${props.node.y}px`,
-  width: `${NODE_WIDTH}px`,
+  width: `${nodeWidth(props.node)}px`,
 }));
 
 function onSelectType(joinType: JoinType): void {
@@ -113,7 +133,7 @@ function onSelectType(joinType: JoinType): void {
 <template>
   <div
     :data-node-id="node.id"
-    class="group absolute select-none rounded-lg border bg-white shadow-sm"
+    class="group absolute cursor-grab select-none rounded-lg border bg-white shadow-sm active:cursor-grabbing"
     :class="[
       isConnectTarget
         ? 'border-[#3B1770] ring-2 ring-[#3B1770]/40'
@@ -124,13 +144,13 @@ function onSelectType(joinType: JoinType): void {
             : 'border-[#D8D8D8]',
     ]"
     :style="baseStyle"
+    @pointerdown="emit('start-move', { id: node.id, event: $event })"
   >
     <!-- ======================= TABLE ======================= -->
     <template v-if="node.type === 'table'">
       <header
-        class="flex h-9 items-center gap-1.5 rounded-t-lg border-b border-[#EEE] bg-[#F7F9FC] pl-2 pr-4 cursor-grab active:cursor-grabbing"
+        class="flex h-9 items-center gap-1.5 rounded-t-lg border-b border-[#EEE] bg-[#F7F9FC] pl-2 pr-4"
         :class="{ 'rounded-b-lg border-b-0': node.collapsed && !collapsedActiveFields.length }"
-        @pointerdown="emit('start-move', { id: node.id, event: $event })"
       >
         <button
           type="button"
@@ -147,13 +167,14 @@ function onSelectType(joinType: JoinType): void {
             <path d="M3 9h18M3 14h18M9 4v16" />
           </svg>
         </span>
-        <div class="min-w-0 flex-1" @pointerdown.stop>
+        <div class="min-w-0 flex-1">
           <input
             v-if="editing"
             ref="nameInput"
             v-model="draft"
             type="text"
-            class="w-full rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#25262E] outline-none"
+            class="w-full cursor-text rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#25262E] outline-none"
+            @pointerdown.stop
             @keydown.enter.prevent="commitEdit"
             @keydown.esc.prevent="cancelEdit"
             @blur="commitEdit"
@@ -164,7 +185,8 @@ function onSelectType(joinType: JoinType): void {
             type="button"
             class="flex w-full flex-col items-start leading-none"
             title="Click to rename"
-            @click.stop="startEdit"
+            @pointerdown="onNamePointerDown"
+            @click.stop="onNameClick"
           >
             <span class="max-w-full truncate text-sm font-semibold text-[#25262E]">{{ displayName }}</span>
             <span v-if="showOriginalName" class="max-w-full truncate pt-0.5 text-[10px] font-normal text-[#9A9A9A]">{{ node.label }}</span>
@@ -204,9 +226,8 @@ function onSelectType(joinType: JoinType): void {
     <!-- ======================= JOIN ======================= -->
     <template v-else-if="isJoin">
       <header
-        class="relative flex h-9 items-center gap-1 rounded-t-lg border-b border-[#EEE] bg-[#F5F1FC] pl-1.5 pr-2 cursor-grab active:cursor-grabbing"
+        class="relative flex h-9 items-center gap-1 rounded-t-lg border-b border-[#EEE] bg-[#F5F1FC] pl-1.5 pr-2"
         :class="{ 'rounded-b-lg border-b-0': node.collapsed }"
-        @pointerdown="emit('start-move', { id: node.id, event: $event })"
       >
         <button
           type="button"
@@ -218,13 +239,14 @@ function onSelectType(joinType: JoinType): void {
           <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 transition-transform" :class="{ '-rotate-90': node.collapsed }" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6" /></svg>
         </button>
         <!-- Editable join name (left) -->
-        <div class="min-w-0 flex-1" @pointerdown.stop>
+        <div class="min-w-0 flex-1">
           <input
             v-if="editing"
             ref="nameInput"
             v-model="draft"
             type="text"
-            class="w-full rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#3B1770] outline-none"
+            class="w-full cursor-text rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#3B1770] outline-none"
+            @pointerdown.stop
             @keydown.enter.prevent="commitEdit"
             @keydown.esc.prevent="cancelEdit"
             @blur="commitEdit"
@@ -235,7 +257,8 @@ function onSelectType(joinType: JoinType): void {
             type="button"
             class="max-w-full truncate rounded px-1 py-0.5 text-left text-sm font-semibold text-[#3B1770] hover:bg-white"
             title="Click to rename"
-            @click.stop="startEdit"
+            @pointerdown="onNamePointerDown"
+            @click.stop="onNameClick"
           >
             {{ displayName }}
           </button>
@@ -357,8 +380,7 @@ function onSelectType(joinType: JoinType): void {
     <!-- ======================= OUTPUT ======================= -->
     <template v-else>
       <header
-        class="flex h-9 items-center gap-2 rounded-t-lg bg-[#25262E] px-2.5 text-white cursor-grab active:cursor-grabbing"
-        @pointerdown="emit('start-move', { id: node.id, event: $event })"
+        class="flex h-9 items-center gap-2 rounded-t-lg bg-[#25262E] px-2.5 text-white"
       >
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" />
@@ -372,6 +394,13 @@ function onSelectType(joinType: JoinType): void {
         </p>
       </div>
     </template>
+
+    <!-- Resize width (right edge; ports still sit on top at their band) -->
+    <span
+      class="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize"
+      title="Drag to resize width"
+      @pointerdown.stop="emit('start-resize', { id: node.id, event: $event })"
+    />
 
     <!-- Remove (not for output) -->
     <button

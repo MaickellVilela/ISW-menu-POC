@@ -37,6 +37,8 @@ export interface CanvasNode {
   label: string;
   /** User-facing display name. When unset, the UI falls back to `label` (or "Join"). */
   customName?: string;
+  /** Per-card width in px. When unset, falls back to NODE_WIDTH. Clamped to [MIN,MAX]. */
+  width?: number;
   x: number;
   y: number;
   /** Table nodes expose the columns that joins can match on. */
@@ -66,6 +68,13 @@ export interface Connection {
 }
 
 export const NODE_WIDTH = 232;
+/** Cards can be resized between 60% and 200% of the default width. */
+export const MIN_NODE_WIDTH = Math.round(NODE_WIDTH * 0.6);
+export const MAX_NODE_WIDTH = NODE_WIDTH * 2;
+
+export function clampNodeWidth(width: number): number {
+  return Math.min(MAX_NODE_WIDTH, Math.max(MIN_NODE_WIDTH, Math.round(width)));
+}
 
 /** Vertical offsets (from a node's top) where connection ports are anchored. */
 export const PORT_DY = 46;
@@ -137,10 +146,15 @@ export function isOutputNode(node: CanvasNode): boolean {
   return node.type === 'output';
 }
 
+/** Effective, clamped width for a node (falls back to the default). */
+export function nodeWidth(node: CanvasNode): number {
+  return clampNodeWidth(node.width ?? NODE_WIDTH);
+}
+
 /** Output port (right edge) for any node that can feed downstream. */
 export function outputAnchor(node: CanvasNode): Point {
   const dy = node.collapsed ? COLLAPSED_PORT_DY : PORT_DY;
-  return { x: node.x + NODE_WIDTH, y: node.y + dy };
+  return { x: node.x + nodeWidth(node), y: node.y + dy };
 }
 
 /** Input port (left edge). Slot 1 is the Right input of a join; everything else uses slot 0. */
@@ -156,7 +170,7 @@ export function inputAnchor(node: CanvasNode, slot = 0): Point {
 /** Suggested spot for a new join node: to the right of, and between, its inputs. */
 export function computeJoinPosition(a: CanvasNode, b: CanvasNode): Point {
   return {
-    x: Math.max(a.x, b.x) + NODE_WIDTH + 96,
+    x: Math.max(a.x + nodeWidth(a), b.x + nodeWidth(b)) + 96,
     y: (a.y + b.y) / 2,
   };
 }
@@ -194,29 +208,31 @@ export interface NodeSize {
  * node (e.g. layout math that treats collapsed tables as header-only).
  */
 export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
+  const width = nodeWidth(node);
+
   if (node.type === 'output') {
-    return { width: NODE_WIDTH, height: HEADER_HEIGHT + OUTPUT_BODY_HEIGHT };
+    return { width, height: HEADER_HEIGHT + OUTPUT_BODY_HEIGHT };
   }
 
   if (node.type === 'table') {
     if (node.collapsed) {
       const body = activeFieldCount > 0 ? activeFieldCount * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING : 0;
-      return { width: NODE_WIDTH, height: HEADER_HEIGHT + body };
+      return { width, height: HEADER_HEIGHT + body };
     }
     const fieldCount = node.fields?.length ?? 0;
     const listHeight =
       fieldCount > 0 ? Math.min(fieldCount * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING, FIELD_LIST_MAX_HEIGHT) : 0;
-    return { width: NODE_WIDTH, height: HEADER_HEIGHT + CARD_BORDER + listHeight };
+    return { width, height: HEADER_HEIGHT + CARD_BORDER + listHeight };
   }
 
   // Join
   if (node.collapsed) {
-    return { width: NODE_WIDTH, height: HEADER_HEIGHT };
+    return { width, height: HEADER_HEIGHT };
   }
   const conditionCount = node.conditions?.length ?? 0;
   const height =
     HEADER_HEIGHT + CARD_BORDER + JOIN_INPUTS_HEIGHT + JOIN_CONDITIONS_CHROME + conditionCount * CONDITION_ROW_HEIGHT;
-  return { width: NODE_WIDTH, height };
+  return { width, height };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -297,8 +313,12 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
     return point.y + sizeOf(node).height / 2;
   };
 
+  let x = originX;
   for (let col = 0; col < columns.length; col++) {
-    const x = originX + col * (NODE_WIDTH + columnGap);
+    const columnWidth = Math.max(
+      NODE_WIDTH,
+      ...columns[col].map((id) => sizeOf(byId.get(id)!).width),
+    );
 
     const items = columns[col].map((id, index) => {
       const node = byId.get(id)!;
@@ -325,6 +345,8 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
       positions.set(item.id, { x, y: top });
       cursor = top + height + rowGap;
     }
+
+    x += columnWidth + columnGap;
   }
 
   return positions;
@@ -552,6 +574,12 @@ export function useDataSourceCanvas() {
     node.customName = trimmed ? trimmed : undefined;
   }
 
+  /** Sets a card's width, clamped to the allowed range. */
+  function setNodeWidth(id: string, width: number): void {
+    const node = findNode(id);
+    if (node) node.width = clampNodeWidth(width);
+  }
+
   /** Collapses or expands every collapsible card at once (Output has no compact form). */
   function setAllCollapsed(collapsed: boolean): void {
     for (const node of nodes.value) {
@@ -616,6 +644,7 @@ export function useDataSourceCanvas() {
     toggleCollapse,
     setAllCollapsed,
     setNodeName,
+    setNodeWidth,
     removeNode,
     clear,
     loadPreset,
