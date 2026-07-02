@@ -260,7 +260,7 @@ export interface LayoutOptions {
 export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}): Map<string, Point> {
   const originX = options.originX ?? 80;
   const originY = options.originY ?? 60;
-  const columnGap = options.columnGap ?? 88;
+  const columnGap = options.columnGap ?? 48;
   const rowGap = options.rowGap ?? 28;
   const sizeOf = options.sizeOf ?? ((node: CanvasNode) => nodeSize(node));
 
