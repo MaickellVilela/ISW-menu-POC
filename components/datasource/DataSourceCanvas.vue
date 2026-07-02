@@ -15,6 +15,7 @@ import {
 import CanvasNode from './CanvasNode.vue';
 import ConnectionLines from './ConnectionLines.vue';
 import JoinVennIcon from './JoinVennIcon.vue';
+import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
 
 const SURFACE_WIDTH = 2400;
 const SURFACE_HEIGHT = 1600;
@@ -37,11 +38,23 @@ const {
   toggleCollapse,
   removeNode,
   clear,
+  loadPreset,
 } = useDataSourceCanvas();
 
 const surface = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
+const showDemoMenu = ref(false);
+
+function toggleDemoMenu(): void {
+  showDemoMenu.value = !showDemoMenu.value;
+}
+
+function applyPreset(preset: DemoPreset): void {
+  loadPreset(preset.build());
+  resetZoom();
+  showDemoMenu.value = false;
+}
 
 type Interaction =
   | { mode: 'move'; id: string; offsetX: number; offsetY: number }
@@ -222,7 +235,7 @@ onBeforeUnmount(detachWindowListeners);
 </script>
 
 <template>
-  <div class="flex h-full w-full flex-col">
+  <div class="relative flex h-full w-full flex-col">
     <!-- Toolbar -->
     <div class="z-20 flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] bg-white px-4 py-2">
       <div class="flex items-center gap-4">
@@ -342,6 +355,41 @@ onBeforeUnmount(detachWindowListeners);
           </ol>
         </div>
       </div>
+    </div>
+
+    <!-- Floating demo presets (pinned to the canvas, above the scroll viewport) -->
+    <div class="absolute bottom-4 right-4 z-30 flex flex-col items-end gap-2">
+      <div
+        v-if="showDemoMenu"
+        class="w-64 overflow-hidden rounded-lg border border-[#E2E2E2] bg-white shadow-xl"
+      >
+        <div class="border-b border-[#F0F0F0] px-3 py-2">
+          <p class="text-xs font-semibold text-[#25262E]">Demo scenarios</p>
+          <p class="mt-0.5 text-[11px] text-[#9A9A9A]">Loads a ready-made pipeline</p>
+        </div>
+        <button
+          v-for="preset in DEMO_PRESETS"
+          :key="preset.id"
+          type="button"
+          class="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left hover:bg-[#F5F1FC]"
+          @click="applyPreset(preset)"
+        >
+          <span class="text-sm font-medium text-[#25262E]">{{ preset.name }}</span>
+          <span class="text-xs text-[#6B6B6B]">{{ preset.description }}</span>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        class="flex items-center gap-2 rounded-full bg-[#3B1770] px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-[#4B1E8C]"
+        :aria-expanded="showDemoMenu"
+        @click="toggleDemoMenu"
+      >
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+        Demo
+      </button>
     </div>
   </div>
 </template>

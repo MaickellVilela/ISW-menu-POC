@@ -383,6 +383,12 @@ export function useDataSourceCanvas() {
     if (output) output.inputs = [];
   }
 
+  /** Replaces the whole canvas with a prebuilt set of nodes (e.g. a demo preset). */
+  function loadPreset(preset: CanvasNode[]): void {
+    nodes.value = preset;
+    ensureOutput();
+  }
+
   onMounted(loadFromStorage);
   watch(nodes, saveToStorage, { deep: true });
 
@@ -402,5 +408,6 @@ export function useDataSourceCanvas() {
     toggleCollapse,
     removeNode,
     clear,
+    loadPreset,
   };
 }
