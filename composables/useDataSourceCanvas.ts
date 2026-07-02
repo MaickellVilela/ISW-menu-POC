@@ -67,8 +67,11 @@ export const NODE_WIDTH = 232;
 /** Vertical offsets (from a node's top) where connection ports are anchored. */
 export const PORT_DY = 46;
 export const JOIN_RIGHT_PORT_DY = 74;
-/** Header is h-9 (36px); a collapsed table anchors its port at the header's middle. */
+/** Header is h-9 (36px); a collapsed card anchors its output port at the header's middle. */
 export const COLLAPSED_PORT_DY = 18;
+/** Collapsed join: the two input ports are stacked inside the header band. */
+export const JOIN_COLLAPSED_LEFT_DY = 13;
+export const JOIN_COLLAPSED_RIGHT_DY = 27;
 
 /** MIME type used to carry a SourceItem across the native drag-and-drop boundary. */
 export const SOURCE_DRAG_MIME = 'application/x-datasource-item';
@@ -133,13 +136,17 @@ export function isOutputNode(node: CanvasNode): boolean {
 
 /** Output port (right edge) for any node that can feed downstream. */
 export function outputAnchor(node: CanvasNode): Point {
-  const dy = node.type === 'table' && node.collapsed ? COLLAPSED_PORT_DY : PORT_DY;
+  const dy = node.collapsed ? COLLAPSED_PORT_DY : PORT_DY;
   return { x: node.x + NODE_WIDTH, y: node.y + dy };
 }
 
 /** Input port (left edge). Slot 1 is the Right input of a join; everything else uses slot 0. */
 export function inputAnchor(node: CanvasNode, slot = 0): Point {
-  const dy = node.type === 'join' && slot === 1 ? JOIN_RIGHT_PORT_DY : PORT_DY;
+  let dy = PORT_DY;
+  if (node.type === 'join') {
+    if (node.collapsed) dy = slot === 1 ? JOIN_COLLAPSED_RIGHT_DY : JOIN_COLLAPSED_LEFT_DY;
+    else dy = slot === 1 ? JOIN_RIGHT_PORT_DY : PORT_DY;
+  }
   return { x: node.x, y: node.y + dy };
 }
 
