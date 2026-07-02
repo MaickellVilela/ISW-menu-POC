@@ -3,7 +3,7 @@ import { computed, nextTick, ref } from 'vue';
 import {
   PORT_DY,
   JOIN_RIGHT_PORT_DY,
-  COLLAPSED_PORT_DY,
+  OUTPUT_PORT_DY,
   JOIN_COLLAPSED_LEFT_DY,
   JOIN_COLLAPSED_RIGHT_DY,
   JOIN_TYPE_LABELS,
@@ -111,7 +111,10 @@ function onNameClick(event: MouseEvent): void {
 }
 
 const activeSet = computed(() => new Set(props.activeFields));
-const outputPortDy = computed(() => (props.node.collapsed ? COLLAPSED_PORT_DY : PORT_DY));
+// Only the output (right) dot is pinned to the header centre; the left input
+// dots keep their original positions (stacked when collapsed, aligned with the
+// Left/Right rows when expanded).
+const outputPortDy = OUTPUT_PORT_DY;
 const leftInputDy = computed(() => (props.node.collapsed ? JOIN_COLLAPSED_LEFT_DY : PORT_DY));
 const rightInputDy = computed(() => (props.node.collapsed ? JOIN_COLLAPSED_RIGHT_DY : JOIN_RIGHT_PORT_DY));
 const collapsedActiveFields = computed(() =>
@@ -366,12 +369,11 @@ function onSelectType(joinType: JoinType): void {
           <button
             type="button"
             title="Preview join result"
-            class="flex items-center gap-1 rounded border border-[#E2E2E2] px-2 py-0.5 text-[11px] font-medium text-[#5A5A5A] hover:border-[#3B1770] hover:text-[#3B1770]"
+            class="flex items-center rounded p-0.5 text-[#5A5A5A] hover:text-[#3B1770]"
             @pointerdown.stop
             @click.stop="emit('preview', node.id)"
           >
             <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
-            Preview
           </button>
         </div>
       </div>

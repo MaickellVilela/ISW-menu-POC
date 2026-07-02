@@ -50,10 +50,14 @@ const surface = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
 const showDemoMenu = ref(false);
-const viewMode = ref<'expanded' | 'compact'>('expanded');
+// Reflects the real cards: compact only when every card is collapsed, else
+// expanded. Since cards are created expanded, this defaults to 'expanded'.
+const viewMode = computed<'expanded' | 'compact'>(() => {
+  const collapsible = nodes.value.filter((node) => node.type !== 'output');
+  return collapsible.length > 0 && collapsible.every((node) => node.collapsed) ? 'compact' : 'expanded';
+});
 
 function setViewMode(mode: 'expanded' | 'compact'): void {
-  viewMode.value = mode;
   setAllCollapsed(mode === 'compact');
 }
 
@@ -261,12 +265,7 @@ onBeforeUnmount(detachWindowListeners);
     <!-- Toolbar -->
     <div class="z-20 flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] bg-white px-4 py-2">
       <div class="flex items-center gap-4">
-        <span class="text-sm font-medium text-[#25262E]">Join Builder</span>
-        <span class="flex items-center gap-3 text-[11px] text-[#6B6B6B]">
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-[#3B6BB5]" /> Left</span>
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-[#8B5CF6]" /> Right</span>
-          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-[#25262E]" /> Output</span>
-        </span>
+        <span class="text-sm font-medium text-[#25262E]">Data Source Creation</span>
       </div>
 
       <div class="flex items-center gap-2">

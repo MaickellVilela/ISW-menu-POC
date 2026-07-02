@@ -79,8 +79,8 @@ export function clampNodeWidth(width: number): number {
 /** Vertical offsets (from a node's top) where connection ports are anchored. */
 export const PORT_DY = 46;
 export const JOIN_RIGHT_PORT_DY = 74;
-/** Header is h-9 (36px); a collapsed card anchors its output port at the header's middle. */
-export const COLLAPSED_PORT_DY = 18;
+/** The output (right-edge) port always sits on the header's vertical centre (h-9 = 36px). */
+export const OUTPUT_PORT_DY = 18;
 /** Collapsed join: the two input ports are stacked inside the header band. */
 export const JOIN_COLLAPSED_LEFT_DY = 13;
 export const JOIN_COLLAPSED_RIGHT_DY = 27;
@@ -151,10 +151,9 @@ export function nodeWidth(node: CanvasNode): number {
   return clampNodeWidth(node.width ?? NODE_WIDTH);
 }
 
-/** Output port (right edge) for any node that can feed downstream. */
+/** Output port (right edge) for any node that can feed downstream. Always centred on the header. */
 export function outputAnchor(node: CanvasNode): Point {
-  const dy = node.collapsed ? COLLAPSED_PORT_DY : PORT_DY;
-  return { x: node.x + nodeWidth(node), y: node.y + dy };
+  return { x: node.x + nodeWidth(node), y: node.y + OUTPUT_PORT_DY };
 }
 
 /** Input port (left edge). Slot 1 is the Right input of a join; everything else uses slot 0. */
