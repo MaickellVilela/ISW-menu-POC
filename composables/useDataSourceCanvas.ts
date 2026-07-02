@@ -315,10 +315,9 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
 
   let x = originX;
   for (let col = 0; col < columns.length; col++) {
-    const columnWidth = Math.max(
-      NODE_WIDTH,
-      ...columns[col].map((id) => sizeOf(byId.get(id)!).width),
-    );
+    // Reserve only as much horizontal space as the widest card in this column.
+    const columnWidths = columns[col].map((id) => sizeOf(byId.get(id)!).width);
+    const columnWidth = columnWidths.length ? Math.max(...columnWidths) : NODE_WIDTH;
 
     const items = columns[col].map((id, index) => {
       const node = byId.get(id)!;

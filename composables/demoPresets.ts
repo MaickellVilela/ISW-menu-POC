@@ -187,7 +187,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       left: 'j1',
       right: 'products',
       on: [['Order Items.product_id', 'Products.id']],
-      x: 580,
+      x: 640,
       y: 220,
     },
     {
@@ -195,7 +195,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       left: 'j2',
       right: 'categories',
       on: [['Products.category_id', 'Categories.id']],
-      x: 780,
+      x: 900,
       y: 320,
     },
     {
@@ -203,7 +203,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       left: 'j3',
       right: 'suppliers',
       on: [['Products.supplier_id', 'Suppliers.id']],
-      x: 980,
+      x: 1160,
       y: 420,
     },
     {
@@ -211,7 +211,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       left: 'j4',
       right: 'customers',
       on: [['Orders.customer_id', 'Customers.id']],
-      x: 1180,
+      x: 1420,
       y: 520,
     },
     {
@@ -219,7 +219,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       left: 'j5',
       right: 'stores',
       on: [['Orders.store_id', 'Stores.id']],
-      x: 1380,
+      x: 1680,
       y: 620,
     },
     {
@@ -228,7 +228,7 @@ const FULL_MODEL_SPEC: PresetSpec = {
       right: 'regions',
       on: [['Stores.region_id', 'Regions.id']],
       joinType: 'left',
-      x: 1580,
+      x: 1940,
       y: 720,
     },
     {
@@ -237,12 +237,12 @@ const FULL_MODEL_SPEC: PresetSpec = {
       right: 'employees',
       on: [['Stores.id', 'Employees.store_id']],
       joinType: 'left',
-      x: 1780,
+      x: 2200,
       y: 820,
     },
   ],
   output: 'j8',
-  outputPosition: { x: 2120, y: 840 },
+  outputPosition: { x: 2560, y: 840 },
 };
 
 /** Demo presets exposed to the UI, ordered from simplest to most complex. */
