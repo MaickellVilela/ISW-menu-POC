@@ -216,6 +216,117 @@ export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
   return { width: NODE_WIDTH, height };
 }
 
+/* -------------------------------------------------------------------------- */
+/* Auto layout                                                                */
+/*                                                                            */
+/* The graph is a left-to-right DAG (tables feed joins feed the Output), so a  */
+/* layered layout fits naturally: a node's column is its longest distance from */
+/* a source, and within a column each node is centred against its inputs and   */
+/* packed so it never overlaps its neighbours. Pure + deterministic: given the */
+/* same nodes it always returns the same positions, which makes it testable    */
+/* and reusable (e.g. for presets).                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface LayoutOptions {
+  originX?: number;
+  originY?: number;
+  /** Horizontal gap between columns. */
+  columnGap?: number;
+  /** Vertical gap between cards stacked in the same column. */
+  rowGap?: number;
+  /** Height source; defaults to nodeSize. Callers can inject collapsed-table sizes. */
+  sizeOf?: (node: CanvasNode) => NodeSize;
+}
+
+/** Computes tidy positions for every node without mutating them. */
+export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}): Map<string, Point> {
+  const originX = options.originX ?? 80;
+  const originY = options.originY ?? 60;
+  const columnGap = options.columnGap ?? 88;
+  const rowGap = options.rowGap ?? 28;
+  const sizeOf = options.sizeOf ?? ((node: CanvasNode) => nodeSize(node));
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const depthCache = new Map<string, number>();
+
+  function depthOf(id: string, visiting: Set<string>): number {
+    const cached = depthCache.get(id);
+    if (cached !== undefined) return cached;
+    const node = byId.get(id);
+    if (!node || !node.inputs?.length) {
+      depthCache.set(id, 0);
+      return 0;
+    }
+    let maxInput = -1;
+    for (const inputId of node.inputs) {
+      if (visiting.has(inputId)) continue;
+      visiting.add(inputId);
+      maxInput = Math.max(maxInput, depthOf(inputId, visiting));
+      visiting.delete(inputId);
+    }
+    const depth = maxInput < 0 ? 0 : maxInput + 1;
+    depthCache.set(id, depth);
+    return depth;
+  }
+
+  const depths = new Map<string, number>();
+  for (const node of nodes) depths.set(node.id, depthOf(node.id, new Set([node.id])));
+
+  // Pin the Output to the far-right column even if its chain is short.
+  const output = nodes.find(isOutputNode);
+  if (output) {
+    let maxOther = 0;
+    for (const node of nodes) {
+      if (!isOutputNode(node)) maxOther = Math.max(maxOther, depths.get(node.id) ?? 0);
+    }
+    depths.set(output.id, Math.max(depths.get(output.id) ?? 0, maxOther + 1));
+  }
+
+  const maxDepth = Math.max(0, ...depths.values());
+  const columns: string[][] = Array.from({ length: maxDepth + 1 }, () => []);
+  for (const node of nodes) columns[depths.get(node.id) ?? 0].push(node.id);
+
+  const positions = new Map<string, Point>();
+  const centerOf = (id: string): number => {
+    const point = positions.get(id);
+    const node = byId.get(id);
+    if (!point || !node) return originY;
+    return point.y + sizeOf(node).height / 2;
+  };
+
+  for (let col = 0; col < columns.length; col++) {
+    const x = originX + col * (NODE_WIDTH + columnGap);
+
+    const items = columns[col].map((id, index) => {
+      const node = byId.get(id)!;
+      const positionedInputs = (node.inputs ?? []).filter((inputId) => positions.has(inputId));
+      const desiredTop = positionedInputs.length
+        ? positionedInputs.reduce((sum, inputId) => sum + centerOf(inputId), 0) / positionedInputs.length -
+          sizeOf(node).height / 2
+        : null;
+      return { id, node, index, desiredTop };
+    });
+
+    // Order by where inputs pull the card; sources (no inputs) keep their order.
+    items.sort((a, b) => {
+      if (a.desiredTop === null && b.desiredTop === null) return a.index - b.index;
+      if (a.desiredTop === null) return -1;
+      if (b.desiredTop === null) return 1;
+      return a.desiredTop - b.desiredTop;
+    });
+
+    let cursor = originY;
+    for (const item of items) {
+      const height = sizeOf(item.node).height;
+      const top = item.desiredTop !== null ? Math.max(item.desiredTop, cursor) : cursor;
+      positions.set(item.id, { x, y: top });
+      cursor = top + height + rowGap;
+    }
+  }
+
+  return positions;
+}
+
 /** Collects the leaf table columns flowing out of a node as qualified field options. */
 export function collectSourceFields(nodes: CanvasNode[], id: string | undefined): FieldOption[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -455,6 +566,26 @@ export function useDataSourceCanvas() {
     ensureOutput();
   }
 
+  /** Re-flows every card into a tidy left-to-right layered layout (on demand). */
+  function tidyLayout(): void {
+    const used = usedFieldValues(nodes.value);
+    const activeFieldCount = (node: CanvasNode): number =>
+      (node.fields ?? []).filter((field) => used.has(`${node.label}.${field.name}`)).length;
+
+    const positions = computeLayout(nodes.value, {
+      sizeOf: (node) =>
+        nodeSize(node, node.type === 'table' && node.collapsed ? activeFieldCount(node) : 0),
+    });
+
+    for (const node of nodes.value) {
+      const point = positions.get(node.id);
+      if (point) {
+        node.x = point.x;
+        node.y = point.y;
+      }
+    }
+  }
+
   onMounted(loadFromStorage);
   watch(nodes, saveToStorage, { deep: true });
 
@@ -476,5 +607,6 @@ export function useDataSourceCanvas() {
     removeNode,
     clear,
     loadPreset,
+    tidyLayout,
   };
 }

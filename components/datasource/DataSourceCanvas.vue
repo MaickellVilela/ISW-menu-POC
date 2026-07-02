@@ -17,8 +17,8 @@ import ConnectionLines from './ConnectionLines.vue';
 import JoinVennIcon from './JoinVennIcon.vue';
 import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
 
-const SURFACE_WIDTH = 2400;
-const SURFACE_HEIGHT = 1600;
+const SURFACE_WIDTH = 3600;
+const SURFACE_HEIGHT = 2400;
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 1.6;
 
@@ -40,6 +40,7 @@ const {
   removeNode,
   clear,
   loadPreset,
+  tidyLayout,
 } = useDataSourceCanvas();
 
 const surface = ref<HTMLElement | null>(null);
@@ -280,6 +281,18 @@ onBeforeUnmount(detachWindowListeners);
           <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
           <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
         </div>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
+          :disabled="!hasContent"
+          title="Auto-align and reorganize the cards"
+          @click="tidyLayout"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h10M4 18h7" />
+          </svg>
+          Tidy up
+        </button>
         <button
           type="button"
           class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
