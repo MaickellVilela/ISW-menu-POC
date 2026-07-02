@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import {
   NODE_WIDTH,
   PORT_DY,
@@ -40,6 +40,7 @@ const emit = defineEmits<{
   (e: 'start-move', payload: { id: string; event: PointerEvent }): void;
   (e: 'start-connect', payload: { id: string; event: PointerEvent }): void;
   (e: 'remove', id: string): void;
+  (e: 'rename', payload: { id: string; name: string }): void;
   (e: 'toggle-collapse', id: string): void;
   (e: 'preview', id: string): void;
   (e: 'set-join-type', payload: { id: string; joinType: JoinType }): void;
@@ -53,6 +54,41 @@ const isJoin = computed(() => props.node.type === 'join');
 const isOutput = computed(() => props.node.type === 'output');
 const joinTypes: JoinType[] = ['inner', 'left', 'full'];
 const typeMenuOpen = ref(false);
+
+/* ----------------------------- inline rename ----------------------------- */
+
+const editing = ref(false);
+const draft = ref('');
+const nameInput = ref<HTMLInputElement | null>(null);
+
+/** Fallback shown when the card has no custom name. */
+const defaultName = computed(() => (isJoin.value ? 'Join' : props.node.label));
+const displayName = computed(() => props.node.customName?.trim() || defaultName.value);
+/** Tables keep their original name visible (smaller) once a custom name is set. */
+const showOriginalName = computed(
+  () => props.node.type === 'table' && !!props.node.customName?.trim() && props.node.customName.trim() !== props.node.label,
+);
+
+async function startEdit(): Promise<void> {
+  if (isOutput.value) return;
+  draft.value = displayName.value;
+  editing.value = true;
+  await nextTick();
+  nameInput.value?.focus();
+  nameInput.value?.select();
+}
+
+function commitEdit(): void {
+  if (!editing.value) return;
+  editing.value = false;
+  const name = draft.value.trim();
+  // Clearing back to the default removes the custom name entirely.
+  emit('rename', { id: props.node.id, name: name === defaultName.value ? '' : name });
+}
+
+function cancelEdit(): void {
+  editing.value = false;
+}
 
 const activeSet = computed(() => new Set(props.activeFields));
 const outputPortDy = computed(() => (props.node.collapsed ? COLLAPSED_PORT_DY : PORT_DY));
@@ -111,7 +147,29 @@ function onSelectType(joinType: JoinType): void {
             <path d="M3 9h18M3 14h18M9 4v16" />
           </svg>
         </span>
-        <span class="flex-1 truncate text-sm font-semibold text-[#25262E]">{{ node.label }}</span>
+        <div class="min-w-0 flex-1" @pointerdown.stop>
+          <input
+            v-if="editing"
+            ref="nameInput"
+            v-model="draft"
+            type="text"
+            class="w-full rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#25262E] outline-none"
+            @keydown.enter.prevent="commitEdit"
+            @keydown.esc.prevent="cancelEdit"
+            @blur="commitEdit"
+            @click.stop
+          />
+          <button
+            v-else
+            type="button"
+            class="flex w-full flex-col items-start leading-none"
+            title="Click to rename"
+            @click.stop="startEdit"
+          >
+            <span class="max-w-full truncate text-sm font-semibold text-[#25262E]">{{ displayName }}</span>
+            <span v-if="showOriginalName" class="max-w-full truncate pt-0.5 text-[10px] font-normal text-[#9A9A9A]">{{ node.label }}</span>
+          </button>
+        </div>
         <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ (node.fields ?? []).length }}</span>
       </header>
 
@@ -159,22 +217,45 @@ function onSelectType(joinType: JoinType): void {
         >
           <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 transition-transform" :class="{ '-rotate-90': node.collapsed }" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6" /></svg>
         </button>
+        <!-- Editable join name (left) -->
+        <div class="min-w-0 flex-1" @pointerdown.stop>
+          <input
+            v-if="editing"
+            ref="nameInput"
+            v-model="draft"
+            type="text"
+            class="w-full rounded border border-[#C9B8EC] bg-white px-1 py-0.5 text-sm font-semibold text-[#3B1770] outline-none"
+            @keydown.enter.prevent="commitEdit"
+            @keydown.esc.prevent="cancelEdit"
+            @blur="commitEdit"
+            @click.stop
+          />
+          <button
+            v-else
+            type="button"
+            class="max-w-full truncate rounded px-1 py-0.5 text-left text-sm font-semibold text-[#3B1770] hover:bg-white"
+            title="Click to rename"
+            @click.stop="startEdit"
+          >
+            {{ displayName }}
+          </button>
+        </div>
+
+        <!-- Join type (right) -->
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white"
+          class="flex flex-shrink-0 items-center rounded p-1 hover:bg-white"
+          :title="JOIN_TYPE_LABELS[node.joinType ?? 'inner']"
           @pointerdown.stop
           @click.stop="typeMenuOpen = !typeMenuOpen"
         >
           <JoinVennIcon :type="node.joinType ?? 'inner'" />
-          <span class="text-sm font-semibold text-[#3B1770]">{{ JOIN_TYPE_LABELS[node.joinType ?? 'inner'] }}</span>
-          <svg viewBox="0 0 24 24" class="h-3 w-3 text-[#9A7BD0]" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-        <span class="flex-1" />
 
         <!-- Join type menu -->
         <template v-if="typeMenuOpen">
           <div class="fixed inset-0 z-30" @pointerdown.stop @click.stop="typeMenuOpen = false" />
-          <ul class="absolute left-1 top-9 z-40 w-36 overflow-hidden rounded-md border border-[#E2E2E2] bg-white py-1 shadow-lg" @pointerdown.stop>
+          <ul class="absolute right-1 top-9 z-40 w-36 overflow-hidden rounded-md border border-[#E2E2E2] bg-white py-1 shadow-lg" @pointerdown.stop>
             <li v-for="type in joinTypes" :key="type">
               <button
                 type="button"

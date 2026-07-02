@@ -33,7 +33,10 @@ export interface JoinCondition {
 export interface CanvasNode {
   id: string;
   type: CanvasNodeType;
+  /** Stable technical name used to qualify fields in join conditions (never edited by the user). */
   label: string;
+  /** User-facing display name. When unset, the UI falls back to `label` (or "Join"). */
+  customName?: string;
   x: number;
   y: number;
   /** Table nodes expose the columns that joins can match on. */
@@ -541,6 +544,14 @@ export function useDataSourceCanvas() {
     if (node) node.collapsed = !node.collapsed;
   }
 
+  /** Sets a card's display name. A blank name clears it, reverting to the default. */
+  function setNodeName(id: string, name: string): void {
+    const node = findNode(id);
+    if (!node) return;
+    const trimmed = name.trim();
+    node.customName = trimmed ? trimmed : undefined;
+  }
+
   /** Collapses or expands every collapsible card at once (Output has no compact form). */
   function setAllCollapsed(collapsed: boolean): void {
     for (const node of nodes.value) {
@@ -604,6 +615,7 @@ export function useDataSourceCanvas() {
     removeCondition,
     toggleCollapse,
     setAllCollapsed,
+    setNodeName,
     removeNode,
     clear,
     loadPreset,

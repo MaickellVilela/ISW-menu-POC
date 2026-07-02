@@ -37,6 +37,7 @@ const {
   removeCondition,
   toggleCollapse,
   setAllCollapsed,
+  setNodeName,
   removeNode,
   clear,
   loadPreset,
@@ -346,6 +347,7 @@ onBeforeUnmount(detachWindowListeners);
           @start-move="onStartMove"
           @start-connect="onStartConnect"
           @remove="removeNode"
+          @rename="setNodeName($event.id, $event.name)"
           @toggle-collapse="toggleCollapse"
           @preview="onPreview"
           @set-join-type="setJoinType($event.id, $event.joinType)"
