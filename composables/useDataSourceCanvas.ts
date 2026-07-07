@@ -236,14 +236,19 @@ export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Auto layout                                                                */
+/* Auto layout (cascade)                                                      */
 /*                                                                            */
-/* The graph is a left-to-right DAG (tables feed joins feed the Output), so a  */
-/* layered layout fits naturally: a node's column is its longest distance from */
-/* a source, and within a column each node is centred against its inputs and   */
-/* packed so it never overlaps its neighbours. Pure + deterministic: given the */
-/* same nodes it always returns the same positions, which makes it testable    */
-/* and reusable (e.g. for presets).                                            */
+/* Every join combines exactly two inputs, so the tidy layout stacks each     */
+/* join's two inputs in the same column (left-aligned, one above the other)   */
+/* and drops the join one column to the right, centred between them. Because   */
+/* the running result feeds the next join, this naturally cascades down and to */
+/* the right (see the reference mock): each new table sits below its sibling   */
+/* result and its join steps right again.                                     */
+/*                                                                            */
+/* Columns come from the longest distance to the Output (so both inputs of a  */
+/* join always share a column); vertical order comes from a left-first walk of */
+/* the graph, giving source tables sequential rows in join order. Pure +      */
+/* deterministic, so it stays easy to unit test.                              */
 /* -------------------------------------------------------------------------- */
 
 export interface LayoutOptions {
@@ -257,7 +262,7 @@ export interface LayoutOptions {
   sizeOf?: (node: CanvasNode) => NodeSize;
 }
 
-/** Computes tidy positions for every node without mutating them. */
+/** Computes tidy cascade positions for every node without mutating them. */
 export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}): Map<string, Point> {
   const originX = options.originX ?? 80;
   const originY = options.originY ?? 60;
@@ -266,88 +271,125 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
   const sizeOf = options.sizeOf ?? ((node: CanvasNode) => nodeSize(node));
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const depthCache = new Map<string, number>();
+  const heightOf = (id: string): number => sizeOf(byId.get(id)!).height;
+  const inputsOf = (node: CanvasNode | undefined): string[] =>
+    (node?.inputs ?? []).filter((inputId) => byId.has(inputId));
 
-  function depthOf(id: string, visiting: Set<string>): number {
-    const cached = depthCache.get(id);
-    if (cached !== undefined) return cached;
-    const node = byId.get(id);
-    if (!node || !node.inputs?.length) {
-      depthCache.set(id, 0);
-      return 0;
+  // Who consumes each node (reverse of the inputs edges).
+  const consumers = new Map<string, string[]>();
+  for (const node of nodes) {
+    for (const inputId of inputsOf(node)) {
+      const list = consumers.get(inputId);
+      if (list) list.push(node.id);
+      else consumers.set(inputId, [node.id]);
     }
-    let maxInput = -1;
-    for (const inputId of node.inputs) {
+  }
+
+  /* ------------------------------ columns -------------------------------- */
+
+  // Distance to the Output along the longest downstream path. Undefined when a
+  // node cannot reach the Output (orphan tables / partially-built chains).
+  const output = nodes.find(isOutputNode);
+  const outLevel = new Map<string, number>();
+  if (output) outLevel.set(output.id, 0);
+
+  function computeOutLevel(id: string, visiting: Set<string>): number | undefined {
+    const cached = outLevel.get(id);
+    if (cached !== undefined) return cached;
+    let best: number | undefined;
+    for (const consumerId of consumers.get(id) ?? []) {
+      if (visiting.has(consumerId)) continue;
+      visiting.add(consumerId);
+      const level = computeOutLevel(consumerId, visiting);
+      visiting.delete(consumerId);
+      if (level !== undefined) best = best === undefined ? level + 1 : Math.max(best, level + 1);
+    }
+    if (best !== undefined) outLevel.set(id, best);
+    return best;
+  }
+  for (const node of nodes) computeOutLevel(node.id, new Set([node.id]));
+
+  const maxOutLevel = Math.max(0, ...outLevel.values());
+
+  // Fallback for unreachable nodes: their longest distance from a source.
+  const forwardDepth = new Map<string, number>();
+  function computeForward(id: string, visiting: Set<string>): number {
+    const cached = forwardDepth.get(id);
+    if (cached !== undefined) return cached;
+    let depth = 0;
+    for (const inputId of inputsOf(byId.get(id))) {
       if (visiting.has(inputId)) continue;
       visiting.add(inputId);
-      maxInput = Math.max(maxInput, depthOf(inputId, visiting));
+      depth = Math.max(depth, computeForward(inputId, visiting) + 1);
       visiting.delete(inputId);
     }
-    const depth = maxInput < 0 ? 0 : maxInput + 1;
-    depthCache.set(id, depth);
+    forwardDepth.set(id, depth);
     return depth;
   }
 
-  const depths = new Map<string, number>();
-  for (const node of nodes) depths.set(node.id, depthOf(node.id, new Set([node.id])));
-
-  // Pin the Output to the far-right column even if its chain is short.
-  const output = nodes.find(isOutputNode);
-  if (output) {
-    let maxOther = 0;
-    for (const node of nodes) {
-      if (!isOutputNode(node)) maxOther = Math.max(maxOther, depths.get(node.id) ?? 0);
-    }
-    depths.set(output.id, Math.max(depths.get(output.id) ?? 0, maxOther + 1));
+  const columnOf = new Map<string, number>();
+  for (const node of nodes) {
+    const level = outLevel.get(node.id);
+    columnOf.set(node.id, level !== undefined ? maxOutLevel - level : computeForward(node.id, new Set([node.id])));
   }
 
-  const maxDepth = Math.max(0, ...depths.values());
-  const columns: string[][] = Array.from({ length: maxDepth + 1 }, () => []);
-  for (const node of nodes) columns[depths.get(node.id) ?? 0].push(node.id);
+  // Resolve each column's x from the widest card it holds.
+  const maxColumn = Math.max(0, ...columnOf.values());
+  const columnMembers: string[][] = Array.from({ length: maxColumn + 1 }, () => []);
+  for (const node of nodes) columnMembers[columnOf.get(node.id) ?? 0].push(node.id);
+
+  const columnX: number[] = [];
+  let x = originX;
+  for (let col = 0; col <= maxColumn; col++) {
+    columnX[col] = x;
+    const widths = columnMembers[col].map((id) => sizeOf(byId.get(id)!).width);
+    x += (widths.length ? Math.max(...widths) : NODE_WIDTH) + columnGap;
+  }
+
+  /* -------------------------------- rows --------------------------------- */
+
+  // A left-first walk gives leaves sequential rows (join entry order); each
+  // join then centres vertically between the inputs already placed above it.
+  const yTop = new Map<string, number>();
+  const visited = new Set<string>();
+  let cursor = originY;
+
+  function place(id: string): void {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const inputs = inputsOf(byId.get(id));
+    if (inputs.length === 0) {
+      yTop.set(id, cursor);
+      cursor += heightOf(id) + rowGap;
+      return;
+    }
+    for (const inputId of inputs) place(inputId);
+    let sum = 0;
+    let count = 0;
+    for (const inputId of inputs) {
+      const top = yTop.get(inputId);
+      if (top !== undefined) {
+        sum += top + heightOf(inputId) / 2;
+        count += 1;
+      }
+    }
+    const center = count ? sum / count : cursor;
+    yTop.set(id, center - heightOf(id) / 2);
+  }
+
+  // Start from sinks, real pipelines (with inputs) first so they anchor the top.
+  const roots = nodes.filter((node) => !(consumers.get(node.id)?.length));
+  roots.sort((a, b) => {
+    const rank = (node: CanvasNode) => (inputsOf(node).length > 0 ? 0 : 1);
+    return rank(a) - rank(b) || nodes.indexOf(a) - nodes.indexOf(b);
+  });
+  for (const root of roots) place(root.id);
+  for (const node of nodes) place(node.id); // any leftovers (e.g. cycles)
 
   const positions = new Map<string, Point>();
-  const centerOf = (id: string): number => {
-    const point = positions.get(id);
-    const node = byId.get(id);
-    if (!point || !node) return originY;
-    return point.y + sizeOf(node).height / 2;
-  };
-
-  let x = originX;
-  for (let col = 0; col < columns.length; col++) {
-    // Reserve only as much horizontal space as the widest card in this column.
-    const columnWidths = columns[col].map((id) => sizeOf(byId.get(id)!).width);
-    const columnWidth = columnWidths.length ? Math.max(...columnWidths) : NODE_WIDTH;
-
-    const items = columns[col].map((id, index) => {
-      const node = byId.get(id)!;
-      const positionedInputs = (node.inputs ?? []).filter((inputId) => positions.has(inputId));
-      const desiredTop = positionedInputs.length
-        ? positionedInputs.reduce((sum, inputId) => sum + centerOf(inputId), 0) / positionedInputs.length -
-          sizeOf(node).height / 2
-        : null;
-      return { id, node, index, desiredTop };
-    });
-
-    // Order by where inputs pull the card; sources (no inputs) keep their order.
-    items.sort((a, b) => {
-      if (a.desiredTop === null && b.desiredTop === null) return a.index - b.index;
-      if (a.desiredTop === null) return -1;
-      if (b.desiredTop === null) return 1;
-      return a.desiredTop - b.desiredTop;
-    });
-
-    let cursor = originY;
-    for (const item of items) {
-      const height = sizeOf(item.node).height;
-      const top = item.desiredTop !== null ? Math.max(item.desiredTop, cursor) : cursor;
-      positions.set(item.id, { x, y: top });
-      cursor = top + height + rowGap;
-    }
-
-    x += columnWidth + columnGap;
+  for (const node of nodes) {
+    positions.set(node.id, { x: columnX[columnOf.get(node.id) ?? 0], y: yTop.get(node.id) ?? originY });
   }
-
   return positions;
 }
 

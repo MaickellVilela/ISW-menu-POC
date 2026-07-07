@@ -15,7 +15,7 @@ import {
 } from '~/composables/useDataSourceCanvas';
 import CanvasNode from './CanvasNode.vue';
 import ConnectionLines from './ConnectionLines.vue';
-import JoinVennIcon from './JoinVennIcon.vue';
+import CanvasHelp from './CanvasHelp.vue';
 import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
 
 const SURFACE_WIDTH = 3600;
@@ -55,6 +55,7 @@ const surface = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
 const showDemoMenu = ref(false);
+const showHelp = ref(false);
 // Reflects the real cards: compact only when every card is collapsed, else
 // expanded. Since cards are created expanded, this defaults to 'expanded'.
 const viewMode = computed<'expanded' | 'compact'>(() => {
@@ -276,6 +277,10 @@ function isEditingText(target: EventTarget | null): boolean {
 }
 
 function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && showHelp.value) {
+    showHelp.value = false;
+    return;
+  }
   if (!(event.metaKey || event.ctrlKey) || isEditingText(event.target)) return;
   if (event.key.toLowerCase() !== 'z') return;
   event.preventDefault();
@@ -433,37 +438,7 @@ onBeforeUnmount(() => {
         class="pointer-events-none absolute left-1/2 top-1/2 z-10 w-[26rem] max-w-[80%] -translate-x-1/2 -translate-y-1/2"
       >
         <div class="rounded-xl border border-dashed border-[#C9B8EC] bg-white/80 p-6 text-center backdrop-blur">
-          <!-- Mini flow diagram -->
-          <div class="mb-5 flex items-center justify-center gap-2">
-            <div class="flex flex-col items-center gap-1">
-              <div class="flex h-10 w-14 items-center justify-center rounded-md border border-[#D8D8D8] bg-[#F7F9FC] text-[#3B6BB5]">
-                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M3 14h18M9 4v16" /></svg>
-              </div>
-              <span class="text-[10px] text-[#9A9A9A]">Source</span>
-            </div>
-            <svg viewBox="0 0 24 24" class="h-5 w-7 text-[#C4C4C4]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14m0 0-5-5m5 5-5 5" /></svg>
-            <div class="flex flex-col items-center gap-1">
-              <div class="flex h-10 w-14 items-center justify-center rounded-md border border-[#C9B8EC] bg-[#F5F1FC]">
-                <JoinVennIcon type="inner" :size="22" />
-              </div>
-              <span class="text-[10px] text-[#9A9A9A]">Join</span>
-            </div>
-            <svg viewBox="0 0 24 24" class="h-5 w-7 text-[#C4C4C4]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14m0 0-5-5m5 5-5 5" /></svg>
-            <div class="flex flex-col items-center gap-1">
-              <div class="flex h-10 w-14 items-center justify-center rounded-md bg-[#25262E] text-white">
-                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /></svg>
-              </div>
-              <span class="text-[10px] text-[#9A9A9A]">Output</span>
-            </div>
-          </div>
-
-          <h3 class="text-sm font-semibold text-[#25262E]">Build your join pipeline</h3>
-          <ol class="mx-auto mt-3 max-w-xs space-y-1.5 text-left text-xs text-[#6B6B6B]">
-            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">1.</span> Drag a table from the right panel onto the canvas.</li>
-            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">2.</span> Drag from a node's right handle onto another to create a join.</li>
-            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">3.</span> Pick the join type and matching fields right on the card.</li>
-            <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">4.</span> Connect the final join to <span class="font-medium text-[#25262E]">Output</span>.</li>
-          </ol>
+          <CanvasHelp />
         </div>
       </div>
     </div>
@@ -501,6 +476,40 @@ onBeforeUnmount(() => {
         </svg>
         Demo
       </button>
+    </div>
+
+    <!-- Persistent help (bottom-left) -->
+    <button
+      type="button"
+      class="absolute bottom-4 left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#E2E2E2] bg-white text-[#6B6B6B] shadow-lg hover:border-[#3B1770] hover:text-[#3B1770]"
+      title="How to build a data source"
+      aria-label="Help"
+      @click="showHelp = true"
+    >
+      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7" />
+        <path d="M12 17h.01" />
+      </svg>
+    </button>
+
+    <!-- Help modal -->
+    <div
+      v-if="showHelp"
+      class="absolute inset-0 z-40 flex items-center justify-center bg-black/30 p-4"
+      @click.self="showHelp = false"
+    >
+      <div class="relative w-[28rem] max-w-full rounded-xl border border-[#E2E2E2] bg-white p-6 text-center shadow-xl">
+        <button
+          type="button"
+          class="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-[#9A9A9A] hover:bg-[#F0F0F0] hover:text-[#25262E]"
+          aria-label="Close help"
+          @click="showHelp = false"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+        <CanvasHelp />
+      </div>
     </div>
   </div>
 </template>
