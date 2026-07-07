@@ -267,7 +267,7 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
   const originX = options.originX ?? 80;
   const originY = options.originY ?? 60;
   const columnGap = options.columnGap ?? 48;
-  const rowGap = options.rowGap ?? 28;
+  const rowGap = options.rowGap ?? 16;
   const sizeOf = options.sizeOf ?? ((node: CanvasNode) => nodeSize(node));
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -348,43 +348,56 @@ export function computeLayout(nodes: CanvasNode[], options: LayoutOptions = {}):
 
   /* -------------------------------- rows --------------------------------- */
 
-  // A left-first walk gives leaves sequential rows (join entry order); each
-  // join then centres vertically between the inputs already placed above it.
-  const yTop = new Map<string, number>();
-  const visited = new Set<string>();
-  let cursor = originY;
-
-  function place(id: string): void {
-    if (visited.has(id)) return;
-    visited.add(id);
-    const inputs = inputsOf(byId.get(id));
-    if (inputs.length === 0) {
-      yTop.set(id, cursor);
-      cursor += heightOf(id) + rowGap;
-      return;
-    }
-    for (const inputId of inputs) place(inputId);
-    let sum = 0;
-    let count = 0;
-    for (const inputId of inputs) {
-      const top = yTop.get(inputId);
-      if (top !== undefined) {
-        sum += top + heightOf(inputId) / 2;
-        count += 1;
-      }
-    }
-    const center = count ? sum / count : cursor;
-    yTop.set(id, center - heightOf(id) / 2);
+  // Vertical order inside a column follows a left-first, post-order walk: each
+  // join's inputs are emitted before the join, so the running result stays on
+  // top and each newly joined table lands directly beneath it.
+  const order: string[] = [];
+  const seen = new Set<string>();
+  function walk(id: string): void {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const inputId of inputsOf(byId.get(id))) walk(inputId);
+    order.push(id);
   }
-
-  // Start from sinks, real pipelines (with inputs) first so they anchor the top.
   const roots = nodes.filter((node) => !(consumers.get(node.id)?.length));
   roots.sort((a, b) => {
     const rank = (node: CanvasNode) => (inputsOf(node).length > 0 ? 0 : 1);
     return rank(a) - rank(b) || nodes.indexOf(a) - nodes.indexOf(b);
   });
-  for (const root of roots) place(root.id);
-  for (const node of nodes) place(node.id); // any leftovers (e.g. cycles)
+  for (const root of roots) walk(root.id);
+  for (const node of nodes) walk(node.id); // any leftovers (e.g. cycles)
+  const orderIndex = new Map(order.map((id, index) => [id, index]));
+
+  // Pack each column top-to-bottom with a fixed gap, so a joined pair always
+  // sits `rowGap` apart. A join is nudged down to centre on its inputs (which
+  // live in an earlier column, already placed), but never past the packing
+  // cursor, which keeps same-column cards from overlapping.
+  const yTop = new Map<string, number>();
+  for (let col = 0; col <= maxColumn; col++) {
+    const members = columnMembers[col]
+      .slice()
+      .sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
+
+    let cursor = originY;
+    for (const id of members) {
+      const inputs = inputsOf(byId.get(id));
+      let desiredTop: number | null = null;
+      if (inputs.length) {
+        let minTop = Infinity;
+        let maxBottom = -Infinity;
+        for (const inputId of inputs) {
+          const top = yTop.get(inputId);
+          if (top === undefined) continue;
+          minTop = Math.min(minTop, top);
+          maxBottom = Math.max(maxBottom, top + heightOf(inputId));
+        }
+        if (Number.isFinite(minTop)) desiredTop = (minTop + maxBottom) / 2 - heightOf(id) / 2;
+      }
+      const top = desiredTop !== null ? Math.max(desiredTop, cursor) : cursor;
+      yTop.set(id, top);
+      cursor = top + heightOf(id) + rowGap;
+    }
+  }
 
   const positions = new Map<string, Point>();
   for (const node of nodes) {
