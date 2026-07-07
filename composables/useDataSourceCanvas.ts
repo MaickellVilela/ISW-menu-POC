@@ -1,4 +1,5 @@
 import { ref, computed, onMounted, watch, type Ref } from 'vue';
+import { createHistory } from './useHistory';
 
 export type CanvasNodeType = 'table' | 'join' | 'output';
 export type JoinType = 'inner' | 'left' | 'full';
@@ -453,6 +454,11 @@ export function canJoin(nodes: CanvasNode[], leftId: string, rightId: string): b
   return !alreadyJoined;
 }
 
+/** Deep, reference-free copy of a node list (safe to store in history). */
+export function cloneNodes(nodes: CanvasNode[]): CanvasNode[] {
+  return JSON.parse(JSON.stringify(nodes)) as CanvasNode[];
+}
+
 function parseStoredNodes(raw: string | null): CanvasNode[] {
   if (!raw) return [];
   try {
@@ -491,6 +497,60 @@ export function useDataSourceCanvas() {
   function saveToStorage(): void {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes.value));
+  }
+
+  /* ----------------------------- undo / redo ----------------------------- */
+
+  const history = createHistory<CanvasNode[]>({ limit: 50 });
+  const canUndo = ref(false);
+  const canRedo = ref(false);
+  // Snapshot of the last committed state; guards against pushing no-op commits
+  // (e.g. a rejected join) and against re-recording undo/redo restorations.
+  let lastSnapshot = '';
+
+  function syncHistoryFlags(): void {
+    canUndo.value = history.canUndo();
+    canRedo.value = history.canRedo();
+  }
+
+  /** Records the current canvas as a distinct undo step (skips no-op changes). */
+  function commit(): void {
+    const snapshot = JSON.stringify(nodes.value);
+    if (snapshot === lastSnapshot) return;
+    lastSnapshot = snapshot;
+    history.push(JSON.parse(snapshot) as CanvasNode[]);
+    syncHistoryFlags();
+  }
+
+  function applySnapshot(state: CanvasNode[] | undefined): void {
+    if (!state) return;
+    nodes.value = cloneNodes(state);
+    ensureOutput();
+    lastSnapshot = JSON.stringify(nodes.value);
+    syncHistoryFlags();
+  }
+
+  function undo(): void {
+    applySnapshot(history.undo());
+  }
+
+  function redo(): void {
+    applySnapshot(history.redo());
+  }
+
+  function resetHistory(): void {
+    lastSnapshot = JSON.stringify(nodes.value);
+    history.reset(JSON.parse(lastSnapshot) as CanvasNode[]);
+    syncHistoryFlags();
+  }
+
+  /** Wraps a discrete mutation so it records an undo step once it completes. */
+  function committing<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+    return (...args: A): R => {
+      const result = fn(...args);
+      commit();
+      return result;
+    };
   }
 
   function addTable(item: SourceItem, x: number, y: number): CanvasNode {
@@ -623,29 +683,40 @@ export function useDataSourceCanvas() {
     }
   }
 
-  onMounted(loadFromStorage);
+  onMounted(() => {
+    loadFromStorage();
+    resetHistory();
+  });
   watch(nodes, saveToStorage, { deep: true });
 
   return {
     nodes,
     connections,
     findNode,
-    addTable,
+    // Continuous gestures: the UI commits once when the drag/resize ends.
     moveNode,
-    joinNodes,
-    connectToOutput,
-    setJoinType,
-    swapInputs,
-    addCondition,
-    updateCondition,
-    removeCondition,
-    toggleCollapse,
-    setAllCollapsed,
-    setNodeName,
     setNodeWidth,
-    removeNode,
-    clear,
-    loadPreset,
-    tidyLayout,
+    commit,
+    // Undo / redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    // Discrete mutations: each records its own undo step.
+    addTable: committing(addTable),
+    joinNodes: committing(joinNodes),
+    connectToOutput: committing(connectToOutput),
+    setJoinType: committing(setJoinType),
+    swapInputs: committing(swapInputs),
+    addCondition: committing(addCondition),
+    updateCondition: committing(updateCondition),
+    removeCondition: committing(removeCondition),
+    toggleCollapse: committing(toggleCollapse),
+    setAllCollapsed: committing(setAllCollapsed),
+    setNodeName: committing(setNodeName),
+    removeNode: committing(removeNode),
+    clear: committing(clear),
+    loadPreset: committing(loadPreset),
+    tidyLayout: committing(tidyLayout),
   };
 }

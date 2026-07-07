@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import {
   useDataSourceCanvas,
   outputAnchor,
@@ -44,6 +44,11 @@ const {
   clear,
   loadPreset,
   tidyLayout,
+  commit,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
 } = useDataSourceCanvas();
 
 const surface = ref<HTMLElement | null>(null);
@@ -233,6 +238,9 @@ function onPointerUp(event: PointerEvent): void {
       if (target.type === 'output') connectToOutput(current.fromId);
       else joinNodes(current.fromId, targetId);
     }
+  } else if (current?.mode === 'move' || current?.mode === 'resize') {
+    // Continuous gestures mutate live during the drag; record one undo step now.
+    commit();
   }
   resetInteraction();
 }
@@ -257,7 +265,29 @@ function onPreview(): void {
   // Placeholder: preview action intentionally not implemented yet.
 }
 
-onBeforeUnmount(detachWindowListeners);
+/* ------------------------------ shortcuts -------------------------------- */
+
+/** True while the user is typing in a form field, so shortcuts stay dormant. */
+function isEditingText(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (!(event.metaKey || event.ctrlKey) || isEditingText(event.target)) return;
+  if (event.key.toLowerCase() !== 'z') return;
+  event.preventDefault();
+  if (event.shiftKey) redo();
+  else undo();
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  detachWindowListeners();
+  window.removeEventListener('keydown', onKeydown);
+});
 </script>
 
 <template>
@@ -293,6 +323,32 @@ onBeforeUnmount(detachWindowListeners);
           <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom out" @click="zoomOut">−</button>
           <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
           <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
+        </div>
+        <div class="flex items-center rounded-md border border-[#E2E2E2]">
+          <button
+            type="button"
+            class="px-2 py-1 text-[#6B6B6B] hover:text-[#3B1770] disabled:opacity-40 disabled:hover:text-[#6B6B6B]"
+            :disabled="!canUndo"
+            title="Undo (⌘Z)"
+            @click="undo"
+          >
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="border-l border-[#E2E2E2] px-2 py-1 text-[#6B6B6B] hover:text-[#3B1770] disabled:opacity-40 disabled:hover:text-[#6B6B6B]"
+            :disabled="!canRedo"
+            title="Redo (⌘⇧Z)"
+            @click="redo"
+          >
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m15 14 5-5-5-5" />
+              <path d="M20 9H9a5 5 0 0 0 0 10h1" />
+            </svg>
+          </button>
         </div>
         <button
           type="button"
