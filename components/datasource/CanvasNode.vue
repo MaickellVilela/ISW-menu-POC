@@ -441,7 +441,7 @@ function onSelectType(joinType: JoinType): void {
     <span
       v-if="isOutput"
       class="absolute -left-1.5 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-white bg-[#25262E]"
-      :style="{ top: `${PORT_DY}px` }"
+      :style="{ top: `${outputPortDy}px` }"
     />
 
     <!-- Output port (drag to another node to join, or onto Output) -->

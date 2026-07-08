@@ -160,7 +160,10 @@ export function outputAnchor(node: CanvasNode): Point {
 /** Input port (left edge). Slot 1 is the Right input of a join; everything else uses slot 0. */
 export function inputAnchor(node: CanvasNode, slot = 0): Point {
   let dy = PORT_DY;
-  if (node.type === 'join') {
+  if (node.type === 'output') {
+    // The Output has a single input, anchored on its header centre.
+    dy = OUTPUT_PORT_DY;
+  } else if (node.type === 'join') {
     if (node.collapsed) dy = slot === 1 ? JOIN_COLLAPSED_RIGHT_DY : JOIN_COLLAPSED_LEFT_DY;
     else dy = slot === 1 ? JOIN_RIGHT_PORT_DY : PORT_DY;
   }
