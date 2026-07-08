@@ -389,11 +389,22 @@ function onSelectType(joinType: JoinType): void {
         </svg>
         <span class="flex-1 text-sm font-semibold">Output</span>
       </header>
-      <div class="px-3 py-2 text-xs text-[#6B6B6B]">
-        <p>Final dataset</p>
-        <p class="mt-0.5 text-[#9A9A9A]">
-          {{ inflowCount > 0 ? `${inflowCount} columns` : 'Connect a join or table here' }}
-        </p>
+      <div class="flex items-start justify-between gap-2 px-3 py-2 text-xs text-[#6B6B6B]">
+        <div class="min-w-0">
+          <p>Final dataset</p>
+          <p class="mt-0.5 text-[#9A9A9A]">
+            {{ inflowCount > 0 ? `${inflowCount} columns` : 'Connect a join or table here' }}
+          </p>
+        </div>
+        <button
+          type="button"
+          title="Preview output"
+          class="flex flex-shrink-0 items-center rounded p-0.5 text-[#9A9A9A] hover:text-[#3B1770]"
+          @pointerdown.stop
+          @click.stop="emit('preview', node.id)"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+        </button>
       </div>
     </template>
 

@@ -6,6 +6,7 @@ defineProps<{
   width: number;
   height: number;
   tempLine?: { from: Point; to: Point } | null;
+  suggestion?: { from: Point; to: Point } | null;
 }>();
 
 const STROKE: Record<ConnectionKind, string> = {
@@ -29,6 +30,14 @@ function bezierPath(from: Point, to: Point): string {
       fill="none"
       :stroke="STROKE[connection.kind]"
       stroke-width="2"
+    />
+    <path
+      v-if="suggestion"
+      :d="bezierPath(suggestion.from, suggestion.to)"
+      fill="none"
+      stroke="#9A7BD0"
+      stroke-width="2"
+      stroke-dasharray="6 5"
     />
     <path
       v-if="tempLine"

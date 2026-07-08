@@ -3,8 +3,10 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import {
   useDataSourceCanvas,
   outputAnchor,
+  inputAnchor,
   collectSourceFields,
   usedFieldValues,
+  findSuggestedOutputSource,
   nodeWidth,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
@@ -95,6 +97,29 @@ const tempLine = computed(() => {
 
 const hasContent = computed(() => nodes.value.some((node) => node.type !== 'output'));
 const usedValues = computed(() => usedFieldValues(nodes.value));
+
+/* -------------------------- output suggestion ---------------------------- */
+
+// While the Output is unconnected, propose wiring the terminal join into it
+// with a dashed connector and a mid-line "Set as output" button.
+const suggestedOutputId = computed(() => findSuggestedOutputSource(nodes.value));
+
+const suggestionLine = computed(() => {
+  const source = suggestedOutputId.value ? findNode(suggestedOutputId.value) : undefined;
+  const output = nodes.value.find((node) => node.type === 'output');
+  if (!source || !output) return null;
+  return { from: outputAnchor(source), to: inputAnchor(output, 0) };
+});
+
+const suggestionMidpoint = computed(() => {
+  const line = suggestionLine.value;
+  if (!line) return null;
+  return { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 };
+});
+
+function acceptSuggestion(): void {
+  if (suggestedOutputId.value) connectToOutput(suggestedOutputId.value);
+}
 
 /* ---------------------------- derived props ------------------------------ */
 
@@ -402,9 +427,24 @@ onBeforeUnmount(() => {
         <ConnectionLines
           :connections="connections"
           :temp-line="tempLine"
+          :suggestion="interaction ? null : suggestionLine"
           :width="SURFACE_WIDTH"
           :height="SURFACE_HEIGHT"
         />
+
+        <!-- Suggest wiring the terminal join into the Output -->
+        <button
+          v-if="suggestionMidpoint && !interaction"
+          type="button"
+          class="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-[#C9B8EC] bg-white px-2.5 py-1 text-xs font-medium text-[#3B1770] shadow-sm hover:bg-[#F5F1FC]"
+          :style="{ left: `${suggestionMidpoint.x}px`, top: `${suggestionMidpoint.y}px` }"
+          title="Connect this join to the Output"
+          @pointerdown.stop
+          @click.stop="acceptSuggestion"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-5-5m5 5-5 5" /></svg>
+          Set as output
+        </button>
 
         <CanvasNode
           v-for="node in nodes"

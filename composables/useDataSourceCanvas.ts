@@ -509,6 +509,46 @@ export function canJoin(nodes: CanvasNode[], leftId: string, rightId: string): b
   return !alreadyJoined;
 }
 
+/**
+ * Suggests which node should feed the Output while it is still unconnected.
+ *
+ * Picks the terminal join (a join no other node consumes); with several, the
+ * one with the deepest chain wins, since that is most likely the final result.
+ * Returns undefined when the Output is already wired or there is no join yet.
+ */
+export function findSuggestedOutputSource(nodes: CanvasNode[]): string | undefined {
+  const output = nodes.find(isOutputNode);
+  if (!output || (output.inputs?.length ?? 0) > 0) return undefined;
+
+  const consumed = new Set<string>();
+  for (const node of nodes) {
+    for (const input of node.inputs ?? []) consumed.add(input);
+  }
+
+  const terminalJoins = nodes.filter((node) => node.type === 'join' && !consumed.has(node.id));
+  if (terminalJoins.length <= 1) return terminalJoins[0]?.id;
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const depthCache = new Map<string, number>();
+  function depthOf(id: string, visiting: Set<string>): number {
+    const cached = depthCache.get(id);
+    if (cached !== undefined) return cached;
+    let depth = 0;
+    for (const inputId of byId.get(id)?.inputs ?? []) {
+      if (visiting.has(inputId)) continue;
+      visiting.add(inputId);
+      depth = Math.max(depth, depthOf(inputId, visiting) + 1);
+      visiting.delete(inputId);
+    }
+    depthCache.set(id, depth);
+    return depth;
+  }
+
+  return [...terminalJoins].sort(
+    (a, b) => depthOf(b.id, new Set([b.id])) - depthOf(a.id, new Set([a.id])),
+  )[0].id;
+}
+
 /** Deep, reference-free copy of a node list (safe to store in history). */
 export function cloneNodes(nodes: CanvasNode[]): CanvasNode[] {
   return JSON.parse(JSON.stringify(nodes)) as CanvasNode[];
