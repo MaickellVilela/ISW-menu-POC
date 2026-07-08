@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import {
   useDataSourceCanvas,
   outputAnchor,
@@ -8,6 +8,7 @@ import {
   usedFieldValues,
   findSuggestedOutputSource,
   nodeWidth,
+  nodeSize,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
@@ -54,6 +55,7 @@ const {
 } = useDataSourceCanvas();
 
 const surface = ref<HTMLElement | null>(null);
+const viewport = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
 const showDemoMenu = ref(false);
@@ -75,8 +77,14 @@ function toggleDemoMenu(): void {
 
 function applyPreset(preset: DemoPreset): void {
   loadPreset(preset.build());
-  resetZoom();
+  fitToView();
   showDemoMenu.value = false;
+}
+
+/** Tidies the layout, then frames everything so the full picture is visible. */
+function onTidy(): void {
+  tidyLayout();
+  fitToView();
 }
 
 type Interaction =
@@ -167,6 +175,49 @@ function onWheel(event: WheelEvent): void {
   if (!event.ctrlKey && !event.metaKey) return;
   event.preventDefault();
   setZoom(zoom.value - event.deltaY * 0.002);
+}
+
+/* ------------------------------- fit to view ----------------------------- */
+
+const FIT_PADDING = 80;
+
+/** Bounding box of every card (in unscaled surface coordinates). */
+function contentBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (!nodes.value.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes.value) {
+    const activeCount =
+      node.type === 'table' && node.collapsed ? activeFieldsFor(node).length : 0;
+    const size = nodeSize(node, activeCount);
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + size.width);
+    maxY = Math.max(maxY, node.y + size.height);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Zooms and scrolls so the whole pipeline is visible and centred. */
+async function fitToView(): Promise<void> {
+  const vp = viewport.value;
+  const bounds = contentBounds();
+  if (!vp || !bounds) return;
+
+  const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scaleX = (vp.clientWidth - FIT_PADDING * 2) / contentWidth;
+  const scaleY = (vp.clientHeight - FIT_PADDING * 2) / contentHeight;
+  // Fit, but never enlarge cards beyond their natural size.
+  setZoom(Math.min(1, scaleX, scaleY));
+
+  await nextTick();
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  vp.scrollLeft = centerX * zoom.value - vp.clientWidth / 2;
+  vp.scrollTop = centerY * zoom.value - vp.clientHeight / 2;
 }
 
 /* ------------------------------ coordinates ------------------------------ */
@@ -313,7 +364,11 @@ function onKeydown(event: KeyboardEvent): void {
   else undo();
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown));
+onMounted(async () => {
+  window.addEventListener('keydown', onKeydown);
+  await nextTick();
+  fitToView();
+});
 onBeforeUnmount(() => {
   detachWindowListeners();
   window.removeEventListener('keydown', onKeydown);
@@ -354,6 +409,17 @@ onBeforeUnmount(() => {
           <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
           <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
         </div>
+        <button
+          type="button"
+          class="rounded-md border border-[#E2E2E2] px-2 py-1 text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
+          :disabled="!hasContent"
+          title="Fit to view"
+          @click="fitToView"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4m11-5v4a1 1 0 0 1-1 1h-4" />
+          </svg>
+        </button>
         <div class="flex items-center rounded-md border border-[#E2E2E2]">
           <button
             type="button"
@@ -385,7 +451,7 @@ onBeforeUnmount(() => {
           class="flex items-center gap-1.5 rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
           :disabled="!hasContent"
           title="Auto-align and reorganize the cards"
-          @click="tidyLayout"
+          @click="onTidy"
         >
           <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 6h16M4 12h10M4 18h7" />
@@ -404,7 +470,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Scroll viewport -->
-    <div class="relative flex-1 overflow-auto bg-[#FAFAFA]" @wheel="onWheel">
+    <div ref="viewport" class="relative flex-1 overflow-auto bg-[#FAFAFA]" @wheel="onWheel">
       <!-- Sizer drives the scrollable area to match the zoomed surface -->
       <div :style="{ width: `${SURFACE_WIDTH * zoom}px`, height: `${SURFACE_HEIGHT * zoom}px` }" />
 
