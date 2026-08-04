@@ -10,6 +10,7 @@ import HomeIcon from '~/assets/images/home-5-fill.svg';
 import AllContentIcon from '~/assets/images/archive-stack-fill.svg';
 import ProjectsIcon from '~/assets/images/briefcase-fill.svg';
 import ViewsIcon from '~/assets/images/artboard-fill.svg';
+import WorkspaceIcon from '~/assets/images/artboard-fill.svg';
 import DataIcon from '~/assets/images/database-2-fill.svg';
 import BusinessIcon from '~/assets/images/pie-chart-2-fill.svg';
 import AdminIcon from '~/assets/images/tree-node.svg';
@@ -46,6 +47,8 @@ const menuItems = [
   { name: 'Projects', icon: ProjectsIcon },
   { name: 'Views', icon: ViewsIcon },
   { name: 'Data Sources', icon: DataIcon, route: '/data-sources' },
+  { name: 'Agentic Workspace', icon: WorkspaceIcon, route: '/workspace' },
+  { name: 'Workspace Proposal', icon: WorkspaceIcon, route: '/workspace-proposal' },
   { name: 'Business', icon: BusinessIcon },
 ];
 
