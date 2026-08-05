@@ -1,7 +1,5 @@
 import { ref, computed, type Ref } from 'vue';
 
-export type FlowStepId = 'use-case' | 'connection' | 'configuration';
-
 export interface UseCasePayload {
   description: string;
   fileName: string | null;
@@ -10,14 +8,14 @@ export interface UseCasePayload {
 export interface ConnectionOption {
   id: string;
   name: string;
-  /** Engine label, e.g. "PostgreSQL". Empty for the "new connection" tile. */
+  /** Engine label, e.g. "PostgreSQL". Empty for the "new connection" row. */
   type: string;
   kind: 'database' | 'new';
 }
 
 export interface SchemaOption {
   name: string;
-  tableCount: number;
+  tables: string[];
 }
 
 export interface TableConfigPayload {
@@ -25,71 +23,100 @@ export interface TableConfigPayload {
   tables: string[];
 }
 
+/** Everything the modal collects before the agent starts. */
+export interface DataSourceSetup {
+  useCase: UseCasePayload;
+  connection: ConnectionOption;
+  tableConfig: TableConfigPayload;
+}
+
 /** Mock connections mirroring the classic connection picker. */
 export const CONNECTIONS: ConnectionOption[] = [
-  { id: 'new', name: 'New connection', type: '', kind: 'new' },
+  { id: 'new', name: 'New Connection', type: '', kind: 'new' },
   { id: 'marketing', name: 'Marketing data', type: 'PostgreSQL', kind: 'database' },
   { id: 'healthcare', name: 'Healthcare data', type: 'PostgreSQL', kind: 'database' },
   { id: 'snowflake', name: 'Snowflake', type: 'Snowflake', kind: 'database' },
+  { id: 'pg6', name: 'PostgreSQL6', type: 'PostgreSQL', kind: 'database' },
+  { id: 'pg5', name: 'PostgreSQL5', type: 'PostgreSQL', kind: 'database' },
+  { id: 'pg4', name: 'PostgreSQL4', type: 'PostgreSQL', kind: 'database' },
+  { id: 'pg3', name: 'PostgreSQL3', type: 'PostgreSQL', kind: 'database' },
+  { id: 'pg2', name: 'PostgreSQL2', type: 'PostgreSQL', kind: 'database' },
 ];
 
-export const SCHEMAS: SchemaOption[] = [{ name: 'public', tableCount: 5 }];
-
-export const TABLES: string[] = [
-  'customers',
-  'marketing_campaigns',
-  'order_items',
-  'orders',
-  'products',
+export const SCHEMAS: SchemaOption[] = [
+  { name: 'pg_toast', tables: [] },
+  {
+    name: 'public',
+    tables: ['customers', 'marketing_campaigns', 'order_items', 'orders', 'products'],
+  },
 ];
 
 /** Recommended table ceiling before agent quality degrades. */
 export const RECOMMENDED_TABLE_LIMIT = 5;
 
-export interface RecapContent {
+export interface SummarySection {
   title: string;
   lines: string[];
 }
 
-export type FlowItemKind = 'assistant-text' | 'user-text' | 'user-recap';
+export type FlowItemKind = 'assistant-text' | 'user-text' | 'setup-summary' | 'agent-run';
+
+export interface AgentRunState {
+  connectionName: string;
+  running: boolean;
+}
 
 export interface FlowItem {
   id: string;
   kind: FlowItemKind;
   text?: string;
-  recap?: RecapContent;
+  setup?: DataSourceSetup;
+  run?: AgentRunState;
 }
 
-// --- Pure builders (kept side-effect free for unit testing) ---
+// --- Pure helpers (side-effect free so they can be unit tested) ---
 
-export function buildUseCaseRecap(payload: UseCasePayload): RecapContent {
-  const lines = [payload.description.trim()];
-  if (payload.fileName) lines.push(`Attached: ${payload.fileName}`);
-  return { title: 'Use case', lines };
+const DATA_SOURCE_INTENT = /\bdata[\s_-]?sources?\b/i;
+
+/** Simulated intent recognition: the agent offers the modal when a data source is mentioned. */
+export function detectsDataSourceIntent(text: string): boolean {
+  return DATA_SOURCE_INTENT.test(text);
 }
 
-export function buildConnectionRecap(connection: ConnectionOption): RecapContent {
-  const line =
-    connection.kind === 'new'
+export function buildSetupSections(setup: DataSourceSetup): SummarySection[] {
+  const useCaseLines = [setup.useCase.description];
+  if (setup.useCase.fileName) useCaseLines.push(`Attached: ${setup.useCase.fileName}`);
+
+  const connectionLine =
+    setup.connection.kind === 'new'
       ? 'New connection'
-      : `${connection.name} · ${connection.type}`;
-  return { title: 'Connection', lines: [line] };
+      : `${setup.connection.name} · ${setup.connection.type}`;
+
+  return [
+    { title: 'Business use case', lines: useCaseLines },
+    { title: 'Connection', lines: [connectionLine] },
+    {
+      title: 'Tables',
+      lines: setup.tableConfig.tables.map((table) => `${setup.tableConfig.schema}.${table}`),
+    },
+  ];
 }
 
-export function buildTableConfigRecap(payload: TableConfigPayload): RecapContent {
-  return {
-    title: 'Tables',
-    lines: [`${payload.schema}: ${payload.tables.join(', ')}`],
-  };
-}
-
-export function buildCompletionMessage(
-  connection: ConnectionOption,
-  payload: TableConfigPayload,
-): string {
-  const count = payload.tables.length;
+/** Collapsed-state label for the setup card kept in the conversation history. */
+export function buildSetupHeadline(setup: DataSourceSetup): string {
+  const count = setup.tableConfig.tables.length;
   const noun = count === 1 ? 'table' : 'tables';
-  return `Your data source is ready. I assessed ${count} ${noun} from ${connection.name}. Ask me anything about it.`;
+  return `${setup.connection.name} · ${count} ${noun}`;
+}
+
+export function buildAgentStartMessage(setup: DataSourceSetup): string {
+  return `Got it. I'm assessing ${setup.connection.name} now — you can follow along below.`;
+}
+
+export function buildCompletionMessage(setup: DataSourceSetup): string {
+  const count = setup.tableConfig.tables.length;
+  const noun = count === 1 ? 'table' : 'tables';
+  return `Your data source is ready. I assessed ${count} ${noun} from ${setup.connection.name}. Ask me anything about it.`;
 }
 
 /** Three starter questions about the freshly created data source. */
@@ -105,6 +132,26 @@ export function buildSuggestedQuestions(payload: TableConfigPayload): string[] {
   return questions.slice(0, 3);
 }
 
+export function buildIntentReply(hasDataSource: boolean): string {
+  return hasDataSource
+    ? 'Sure — I opened the setup so you can describe the new data source.'
+    : 'Happy to help. I opened the setup so you can describe the use case, pick a connection, and choose tables.';
+}
+
+export function buildFallbackReply(hasDataSource: boolean): string {
+  return hasDataSource
+    ? 'I can answer from the data source you just created, or build another one — just mention a data source.'
+    : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
+}
+
+export const GREETING =
+  'Hi, I\u2019m Simba. I can build data sources for this workspace and answer questions about them. Tell me what you need \u2014 for example, "I need a data source for marketing campaigns".';
+
+export const STARTER_PROMPTS: string[] = [
+  'I need a data source for marketing campaigns',
+  'What can you help me with?',
+];
+
 let itemCounter = 0;
 function nextId(): string {
   itemCounter += 1;
@@ -119,114 +166,98 @@ function userText(text: string): FlowItem {
   return { id: nextId(), kind: 'user-text', text };
 }
 
-function userRecap(recap: RecapContent): FlowItem {
-  return { id: nextId(), kind: 'user-recap', recap };
+function setupSummary(setup: DataSourceSetup): FlowItem {
+  return { id: nextId(), kind: 'setup-summary', setup };
 }
 
-const INTRO =
-  'Let\u2019s create a data source. Describe the business use case, and attach any files that add context.';
-
-/** Simulated time to "build" the data source before it becomes queryable. */
-export const CREATE_DELAY_MS = 1800;
-
-export interface UseDataSourceFlowOptions {
-  /** Override the creation delay; set to 0 in tests. */
-  createDelayMs?: number;
+function agentRun(connectionName: string): FlowItem {
+  return { id: nextId(), kind: 'agent-run', run: { connectionName, running: true } };
 }
 
-export function useDataSourceFlow(options: UseDataSourceFlowOptions = {}) {
-  const createDelayMs = options.createDelayMs ?? CREATE_DELAY_MS;
-
+export function useDataSourceFlow() {
   const items: Ref<FlowItem[]> = ref([]);
-  const activeStep = ref<FlowStepId | null>(null);
-  const isCreating = ref(false);
-  const isComplete = ref(false);
+  const isWizardOpen = ref(false);
   const suggestedQuestions = ref<string[]>([]);
+  const latestSetup = ref<DataSourceSetup | null>(null);
 
-  const useCase = ref<UseCasePayload | null>(null);
-  const connection = ref<ConnectionOption | null>(null);
-  const tableConfig = ref<TableConfigPayload | null>(null);
-
-  const connectionName = computed(() => connection.value?.name ?? '');
-  const hasFreeText = computed(() =>
-    items.value.some((item) => item.kind === 'user-text'),
+  const hasDataSource = computed(() => latestSetup.value !== null);
+  const isAgentRunning = computed(() =>
+    items.value.some((item) => item.kind === 'agent-run' && item.run?.running),
   );
+  const showStarterPrompts = computed(() => items.value.length === 1);
 
   function start(): void {
-    items.value = [assistantText(INTRO)];
-    activeStep.value = 'use-case';
-    isCreating.value = false;
-    isComplete.value = false;
+    items.value = [assistantText(GREETING)];
+    isWizardOpen.value = false;
     suggestedQuestions.value = [];
-    useCase.value = null;
-    connection.value = null;
-    tableConfig.value = null;
+    latestSetup.value = null;
   }
 
-  function submitUseCase(payload: UseCasePayload): void {
-    if (activeStep.value !== 'use-case') return;
-    useCase.value = payload;
-    items.value.push(userRecap(buildUseCaseRecap(payload)));
-    items.value.push(assistantText('Select a connection, or create a new one.'));
-    activeStep.value = 'connection';
+  function openWizard(): void {
+    isWizardOpen.value = true;
   }
 
-  function selectConnection(option: ConnectionOption): void {
-    if (activeStep.value !== 'connection') return;
-    connection.value = option;
-    items.value.push(userRecap(buildConnectionRecap(option)));
+  function cancelWizard(): void {
+    if (!isWizardOpen.value) return;
+    isWizardOpen.value = false;
     items.value.push(
-      assistantText(
-        'Select the tables the agent should assess. Five or fewer works best.',
-      ),
+      assistantText('No problem, I closed the setup. Mention a data source when you want to retry.'),
     );
-    activeStep.value = 'configuration';
   }
 
-  function submitTableConfig(payload: TableConfigPayload): void {
-    if (activeStep.value !== 'configuration') return;
-    tableConfig.value = payload;
-    items.value.push(userRecap(buildTableConfigRecap(payload)));
-    activeStep.value = null;
-    isCreating.value = true;
+  /** Called when the modal finishes all three steps. */
+  function completeWizard(setup: DataSourceSetup): void {
+    isWizardOpen.value = false;
+    latestSetup.value = setup;
+    suggestedQuestions.value = [];
+    items.value.push(setupSummary(setup));
+    items.value.push(assistantText(buildAgentStartMessage(setup)));
+    items.value.push(agentRun(setup.connection.name));
+  }
 
-    window.setTimeout(() => {
-      items.value.push(assistantText(buildCompletionMessage(connection.value!, payload)));
-      suggestedQuestions.value = buildSuggestedQuestions(payload);
-      isCreating.value = false;
-      isComplete.value = true;
-    }, createDelayMs);
+  /** Called when the thinking panel of a given run finishes its sequence. */
+  function completeAgentRun(itemId: string): void {
+    const item = items.value.find((entry) => entry.id === itemId);
+    if (!item?.run?.running || !latestSetup.value) return;
+    const setup = latestSetup.value;
+    item.run.running = false;
+    items.value.push(assistantText(buildCompletionMessage(setup)));
+    suggestedQuestions.value = buildSuggestedQuestions(setup.tableConfig);
   }
 
   function sendFreeText(rawText: string): void {
     const text = rawText.trim();
-    if (!text || !isComplete.value) return;
+    if (!text || isAgentRunning.value) return;
+    suggestedQuestions.value = [];
     items.value.push(userText(text));
-    items.value.push(
-      assistantText('Noted. Refine the data source, or start a new one.'),
-    );
+
+    if (detectsDataSourceIntent(text)) {
+      items.value.push(assistantText(buildIntentReply(hasDataSource.value)));
+      openWizard();
+      return;
+    }
+
+    items.value.push(assistantText(buildFallbackReply(hasDataSource.value)));
   }
 
   start();
 
   return {
     items,
-    activeStep,
-    isCreating,
-    isComplete,
+    isWizardOpen,
     suggestedQuestions,
-    hasFreeText,
-    useCase,
-    connection,
-    tableConfig,
-    connectionName,
+    latestSetup,
+    hasDataSource,
+    isAgentRunning,
+    showStarterPrompts,
+    starterPrompts: STARTER_PROMPTS,
     connections: CONNECTIONS,
     schemas: SCHEMAS,
-    tables: TABLES,
     start,
-    submitUseCase,
-    selectConnection,
-    submitTableConfig,
+    openWizard,
+    cancelWizard,
+    completeWizard,
+    completeAgentRun,
     sendFreeText,
   };
 }

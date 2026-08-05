@@ -47,7 +47,7 @@ const menuItems = [
   { name: 'Projects', icon: ProjectsIcon },
   { name: 'Views', icon: ViewsIcon },
   { name: 'Data Sources', icon: DataIcon, route: '/data-sources' },
-  { name: 'Agentic Workspace', icon: WorkspaceIcon, route: '/workspace' },
+  { name: 'Workspaces', icon: WorkspaceIcon, route: '/workspace' },
   { name: 'Workspace Proposal', icon: WorkspaceIcon, route: '/workspace-proposal' },
   { name: 'Business', icon: BusinessIcon },
 ];
