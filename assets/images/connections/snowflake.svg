@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Stand-in Snowflake mark: replace with the official asset when available. -->
+  <g stroke="#29B5E8" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <g transform="rotate(0 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+    <g transform="rotate(60 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+    <g transform="rotate(120 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+    <g transform="rotate(180 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+    <g transform="rotate(240 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+    <g transform="rotate(300 12 12)">
+      <path d="M12 12V3.6" />
+      <path d="M9.6 6 12 3.6 14.4 6" />
+      <path d="M10.3 9.3 12 7.6l1.7 1.7" />
+    </g>
+  </g>
+</svg>

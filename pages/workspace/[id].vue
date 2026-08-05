@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
+import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 
 const route = useRoute();
 
@@ -103,24 +104,9 @@ const hasSimbaLicense = ref(true);
         </div>
       </aside>
 
-      <!-- Builder: placeholder for legacy UI (no panel title) -->
+      <!-- Builder: simulated legacy Classic Builder UI (no panel title) -->
       <section class="flex min-h-0 min-w-0 w-[60%] flex-col bg-white">
-        <div class="flex min-h-0 flex-1 items-center justify-center">
-          <div class="max-w-md px-6 text-center">
-            <div
-              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-[#D0D0D0] text-[#9A9A9A]"
-            >
-              <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M3 9h18M9 21V9" />
-              </svg>
-            </div>
-            <p class="text-sm font-medium text-[#25262E]">Legacy data source creation</p>
-            <p class="mt-1 text-xs leading-relaxed text-[#9A9A9A]">
-              Placeholder for the existing Classic Builder UI. Drop screenshots or embed the legacy flow here later.
-            </p>
-          </div>
-        </div>
+        <LegacyBuilderPanel />
       </section>
     </div>
   </div>
