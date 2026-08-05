@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
+import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
+import { useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
+import type { DataSourceSetup } from '~/composables/useDataSourceFlow';
 
 const route = useRoute();
 
@@ -18,14 +21,19 @@ const workspaceName = computed(() => {
   return WORKSPACE_NAMES[id] ?? 'Workspace';
 });
 
-// Demo control: simulates whether this user owns a Simba Intelligence license.
-const hasSimbaLicense = ref(true);
+const { assets, openAssetId, openAsset, isEditorOpen, openEditor, closeEditor, addFromSetup } =
+  useWorkspaceAssets();
+
+/** A finished agent run adds the source to the list and opens it for editing. */
+function onSourceCreated(setup: DataSourceSetup) {
+  addFromSetup(setup);
+}
 </script>
 
 <template>
   <div class="flex h-full flex-col overflow-hidden bg-[#F1F1F1]">
     <!-- Workspace header -->
-    <header class="group flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] bg-white px-5 py-3">
+    <header class="flex flex-shrink-0 items-center border-b border-[#E2E2E2] bg-white px-5 py-3">
       <div class="flex items-center gap-3">
         <NuxtLink
           to="/workspace"
@@ -38,76 +46,39 @@ const hasSimbaLicense = ref(true);
           </svg>
         </NuxtLink>
         <h1 class="text-base font-semibold text-[#25262E]">{{ workspaceName }}</h1>
+        <template v-if="openAsset">
+          <span class="text-sm text-[#C4C4C4]">/</span>
+          <span class="text-sm text-[#25262E]">{{ openAsset.name }}</span>
+        </template>
       </div>
 
-      <!-- Demo license switch (revealed on hover) -->
-      <label
-        class="flex cursor-pointer select-none items-center gap-2.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
-        title="Toggle to preview the licensed vs unlicensed experience"
-      >
-        <span class="text-xs font-medium text-[#6B6B6B]">Simba Intelligence license</span>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="hasSimbaLicense"
-          class="relative h-5 w-9 flex-shrink-0 rounded-full transition-colors"
-          :class="hasSimbaLicense ? 'bg-[#3B1770]' : 'bg-[#D8D8D8]'"
-          @click="hasSimbaLicense = !hasSimbaLicense"
-        >
-          <span
-            class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
-            :class="hasSimbaLicense ? 'translate-x-4' : 'translate-x-0.5'"
-          ></span>
-        </button>
-      </label>
     </header>
 
-    <!-- Side-by-side: Agent 40% | Builder 60% -->
+    <!-- Chat centered with the asset list, or split with the editor once a source exists -->
     <div class="flex min-h-0 flex-1">
       <!-- Agent panel -->
-      <aside class="relative flex w-[40%] flex-shrink-0 flex-col border-r border-[#E2E2E2] bg-white">
+      <aside
+        class="relative flex flex-col border-r border-[#E2E2E2] bg-white"
+        :class="isEditorOpen ? 'w-[40%] flex-shrink-0' : 'min-w-0 flex-1'"
+      >
         <div class="flex flex-shrink-0 items-center gap-2 border-b border-[#E2E2E2] px-4 py-2.5">
           <span class="text-sm font-medium text-[#25262E]">Agent</span>
-          <svg
-            v-if="!hasSimbaLicense"
-            viewBox="0 0 24 24"
-            class="h-3.5 w-3.5 text-[#9A9A9A]"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="5" y="11" width="14" height="10" rx="2" />
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-          </svg>
         </div>
 
-        <div class="relative min-h-0 flex-1">
-          <div class="h-full min-h-0" :class="{ 'pointer-events-none opacity-40': !hasSimbaLicense }">
-            <SimbaChatPanel />
-          </div>
-
-          <!-- Unlicensed overlay -->
-          <div
-            v-if="!hasSimbaLicense"
-            class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 px-6 text-center"
-          >
-            <p class="text-xs leading-relaxed text-[#3B1770]">
-              Create data sources with natural language — available with the Agent.
-            </p>
-            <button
-              type="button"
-              class="rounded-md bg-[#3B1770] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#4B1E8C]"
-            >
-              Learn more
-            </button>
-          </div>
+        <div class="min-h-0 flex-1">
+          <SimbaChatPanel @created="onSourceCreated" />
         </div>
       </aside>
 
-      <!-- Builder: simulated legacy Classic Builder UI (no panel title) -->
-      <section class="flex min-h-0 min-w-0 w-[60%] flex-col bg-white">
-        <LegacyBuilderPanel />
+      <!-- Editor: simulated legacy Classic Builder UI, opened from a source -->
+      <section v-if="isEditorOpen" class="flex min-h-0 w-[60%] min-w-0 flex-shrink-0 flex-col bg-white">
+        <LegacyBuilderPanel @close="closeEditor" />
       </section>
+
+      <!-- Otherwise the workspace asset list -->
+      <aside v-else class="flex w-[300px] min-w-0 flex-shrink-0 flex-col border-l border-[#E2E2E2] bg-white">
+        <AssetListPanel :assets="assets" :open-asset-id="openAssetId" @open="openEditor" />
+      </aside>
     </div>
   </div>
 </template>

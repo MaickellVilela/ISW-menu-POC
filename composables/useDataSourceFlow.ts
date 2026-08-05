@@ -144,9 +144,6 @@ export function buildFallbackReply(hasDataSource: boolean): string {
     : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
 }
 
-export const GREETING =
-  'Hi, I\u2019m Simba. I can build data sources for this workspace and answer questions about them. Tell me what you need \u2014 for example, "I need a data source for marketing campaigns".';
-
 export const STARTER_PROMPTS: string[] = [
   'I need a data source for marketing campaigns',
   'What can you help me with?',
@@ -184,10 +181,10 @@ export function useDataSourceFlow() {
   const isAgentRunning = computed(() =>
     items.value.some((item) => item.kind === 'agent-run' && item.run?.running),
   );
-  const showStarterPrompts = computed(() => items.value.length === 1);
+  const showStarterPrompts = computed(() => items.value.length === 0);
 
   function start(): void {
-    items.value = [assistantText(GREETING)];
+    items.value = [];
     isWizardOpen.value = false;
     suggestedQuestions.value = [];
     latestSetup.value = null;
@@ -215,14 +212,18 @@ export function useDataSourceFlow() {
     items.value.push(agentRun(setup.connection.name));
   }
 
-  /** Called when the thinking panel of a given run finishes its sequence. */
-  function completeAgentRun(itemId: string): void {
+  /**
+   * Called when the thinking panel of a given run finishes its sequence.
+   * Returns true only for the transition, so callers can react once.
+   */
+  function completeAgentRun(itemId: string): boolean {
     const item = items.value.find((entry) => entry.id === itemId);
-    if (!item?.run?.running || !latestSetup.value) return;
+    if (!item?.run?.running || !latestSetup.value) return false;
     const setup = latestSetup.value;
     item.run.running = false;
     items.value.push(assistantText(buildCompletionMessage(setup)));
     suggestedQuestions.value = buildSuggestedQuestions(setup.tableConfig);
+    return true;
   }
 
   function sendFreeText(rawText: string): void {

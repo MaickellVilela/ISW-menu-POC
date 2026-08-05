@@ -38,3 +38,21 @@ export const CONNECTOR_ICONS: Record<ConnectorKey, string> = {
 export function connectorIcon(key: ConnectorKey | null | undefined): string | null {
   return key ? CONNECTOR_ICONS[key] : null;
 }
+
+/** Engine labels as they appear on a connection, e.g. "PostgreSQL". */
+const TYPE_TO_CONNECTOR: Record<string, ConnectorKey> = {
+  bigquery: 'bigquery',
+  elasticsearch: 'elasticsearch',
+  hive: 'hive',
+  impala: 'impala',
+  mongodb: 'mongodb',
+  postgresql: 'postgresql',
+  python: 'python',
+  redshift: 'redshift',
+  s3: 's3',
+  snowflake: 'snowflake',
+};
+
+export function connectorKeyForType(type: string): ConnectorKey | null {
+  return TYPE_TO_CONNECTOR[type.trim().toLowerCase()] ?? null;
+}

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeUnmount, ref } from 'vue';
 import { CONNECTOR_ICONS, type ConnectorKey } from '~/composables/connectorIcons';
+
+const emit = defineEmits<{ close: [] }>();
 
 /**
  * Visual simulation of the legacy (Classic Builder) data source screen.
@@ -63,6 +65,21 @@ const TOOLBAR_ITEMS = [
 ];
 
 const canvasMode = ref<'entity' | 'filter-value'>('entity');
+const justSaved = ref(false);
+
+let savedTimer: number | null = null;
+
+function onSave() {
+  justSaved.value = true;
+  if (savedTimer !== null) window.clearTimeout(savedTimer);
+  savedTimer = window.setTimeout(() => {
+    justSaved.value = false;
+  }, 2000);
+}
+
+onBeforeUnmount(() => {
+  if (savedTimer !== null) window.clearTimeout(savedTimer);
+});
 const activeTab = ref<'connections' | 'files'>('connections');
 const expandedIds = ref<string[]>([]);
 
@@ -80,18 +97,74 @@ function toggleExpanded(id: string): void {
 <template>
   <div class="flex h-full min-h-0 flex-col bg-[#F4F4F4]">
     <!-- Toolbar -->
-    <div class="flex flex-shrink-0 items-center gap-6 border-b border-[#E2E2E2] bg-white px-3 py-2">
-      <button
-        v-for="tool in TOOLBAR_ITEMS"
-        :key="tool.id"
-        type="button"
-        class="flex items-center gap-1.5 text-[11px] text-[#25262E] transition-colors hover:text-[#3B1770]"
-      >
-        <svg viewBox="0 0 24 24" class="h-4 w-4 text-[#6B6B6B]" fill="currentColor">
-          <path :d="tool.path" />
-        </svg>
-        {{ tool.label }}
-      </button>
+    <div class="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#E2E2E2] bg-white px-3 py-2">
+      <div class="flex min-w-0 items-center gap-6">
+        <button
+          v-for="tool in TOOLBAR_ITEMS"
+          :key="tool.id"
+          type="button"
+          class="flex items-center gap-1.5 text-[11px] text-[#25262E] transition-colors hover:text-[#3B1770]"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4 text-[#6B6B6B]" fill="currentColor">
+            <path :d="tool.path" />
+          </svg>
+          {{ tool.label }}
+        </button>
+      </div>
+
+      <div class="flex flex-shrink-0 items-center gap-3">
+        <!-- Publish -->
+        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Publish">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 15V4m0 0L8.5 7.5M12 4l3.5 3.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <!-- Preview -->
+        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Preview">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="8.5" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+        <!-- Duplicate -->
+        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Duplicate">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="4" y="4" width="11" height="11" rx="1.5" />
+            <path d="M9 20h9a2 2 0 0 0 2-2V9" stroke-linecap="round" />
+          </svg>
+        </button>
+        <!-- Rename -->
+        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Rename">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M19 13v6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" stroke-linecap="round" />
+            <path d="M10 14l9-9 1.5 1.5-9 9H10v-1.5z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          class="rounded px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors"
+          :class="justSaved ? 'bg-[#1B9E4B]' : 'bg-[#3B1770] hover:bg-[#4B1E8C]'"
+          @click="onSave"
+        >
+          {{ justSaved ? 'Saved' : 'Save Source' }}
+        </button>
+
+        <span class="h-5 w-px flex-shrink-0 bg-[#E2E2E2]"></span>
+
+        <button
+          type="button"
+          class="text-[#6B6B6B] transition-colors hover:text-[#3B1770]"
+          title="Close editor"
+          aria-label="Close editor"
+          @click="emit('close')"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6 6 18" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="flex min-h-0 flex-1">

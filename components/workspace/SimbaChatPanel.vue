@@ -4,16 +4,21 @@ import {
   buildSetupHeadline,
   buildSetupSections,
   useDataSourceFlow,
+  type DataSourceSetup,
   type FlowItem,
 } from '~/composables/useDataSourceFlow';
 import CreateDataSourceModal from '~/components/workspace/CreateDataSourceModal.vue';
 import HistoryDisclosure from '~/components/workspace/HistoryDisclosure.vue';
 import AgentThinkingPanel from '~/components/workspace/AgentThinkingPanel.vue';
 
+/** Fires once the agent finishes assessing a new data source. */
+const emit = defineEmits<{ created: [setup: DataSourceSetup] }>();
+
 const {
   items,
   isWizardOpen,
   suggestedQuestions,
+  latestSetup,
   isAgentRunning,
   showStarterPrompts,
   starterPrompts,
@@ -25,12 +30,18 @@ const {
   sendFreeText,
 } = useDataSourceFlow();
 
+function onRunCompleted(itemId: string) {
+  if (completeAgentRun(itemId) && latestSetup.value) {
+    emit('created', latestSetup.value);
+  }
+}
+
 const draft = ref('');
 const scrollArea = ref<HTMLElement | null>(null);
 
 const canSend = computed(() => !isAgentRunning.value && draft.value.trim().length > 0);
 const composerPlaceholder = computed(() =>
-  isAgentRunning.value ? 'Simba is working…' : 'Message Simba…',
+  isAgentRunning.value ? 'Working on it…' : 'Ask anything…',
 );
 
 async function scrollToBottom() {
@@ -123,14 +134,14 @@ function setupSections(item: FlowItem) {
           <AgentThinkingPanel
             :connection-name="item.run?.connectionName ?? ''"
             :running="item.run?.running ?? false"
-            @completed="completeAgentRun(item.id)"
+            @completed="onRunCompleted(item.id)"
           />
         </HistoryDisclosure>
       </template>
 
-      <!-- Starter prompts before the first message -->
-      <div v-if="showStarterPrompts" class="pt-1">
-        <p class="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">Try asking</p>
+      <!-- Empty state before the first message -->
+      <div v-if="showStarterPrompts" class="pt-6">
+        <p class="mb-4 text-lg font-semibold text-[#25262E]">What do you want to work on?</p>
         <div class="flex flex-col items-start gap-2">
           <button
             v-for="prompt in starterPrompts"
@@ -163,24 +174,30 @@ function setupSections(item: FlowItem) {
 
     <!-- Composer -->
     <div class="mx-auto w-full max-w-3xl flex-shrink-0 p-4">
-      <div class="flex items-end gap-2 rounded-xl border border-[#E2E2E2] bg-white px-3 py-2 focus-within:border-[#3B1770]">
+      <div
+        class="flex items-center gap-2 rounded-full border-2 border-[#C9B8E8] bg-white py-1.5 pl-5 pr-1.5 transition-colors focus-within:border-[#8B5CF6]"
+      >
         <textarea
           v-model="draft"
           rows="1"
           :placeholder="composerPlaceholder"
           :disabled="isAgentRunning"
-          class="max-h-28 flex-1 resize-none bg-transparent text-sm text-[#25262E] placeholder:text-[#9A9A9A] focus:outline-none disabled:cursor-not-allowed"
+          class="max-h-28 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-5 text-[#25262E] placeholder:text-[#9A9A9A] focus:outline-none disabled:cursor-not-allowed"
           @keydown.enter.exact.prevent="onSend"
         ></textarea>
         <button
           type="button"
-          class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#3B1770] text-white transition-opacity hover:bg-[#4B1E8C] disabled:cursor-not-allowed disabled:opacity-40"
+          class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#6B3FA0] text-white transition-colors hover:bg-[#5A3389] disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!canSend"
           title="Send"
+          aria-label="Send"
           @click="onSend"
         >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14m0 0-5-5m5 5-5 5" />
+          <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M1.29754 6.21029C0.949182 6.09417 0.946429 5.90681 1.30471 5.78739L14.0288 1.54601C14.3812 1.42857 14.5832 1.62577 14.4845 1.97129L10.849 14.6955C10.7484 15.0477 10.5453 15.06 10.3964 14.7251L8.00009 9.33333L12.0001 4.00004L6.66678 8L1.29754 6.21029Z"
+              fill="currentColor"
+            />
           </svg>
         </button>
       </div>
