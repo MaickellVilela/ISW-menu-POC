@@ -16,17 +16,55 @@ const WORKSPACE_NAMES: Record<string, string> = {
   sales: 'Sales forecasting',
 };
 
+const workspaceId = computed(() => String(route.params.id));
+
 const workspaceName = computed(() => {
-  const id = String(route.params.id);
-  return WORKSPACE_NAMES[id] ?? 'Workspace';
+  return WORKSPACE_NAMES[workspaceId.value] ?? 'Workspace';
 });
 
-const { assets, openAssetId, openAsset, isEditorOpen, openEditor, closeEditor, addFromSetup } =
-  useWorkspaceAssets();
+const {
+  assets,
+  attachments,
+  openAssetId,
+  openAsset,
+  selectedIds,
+  canPublish,
+  isEditorOpen,
+  openEditor,
+  closeEditor,
+  addFromSetup,
+  importFromCatalog,
+  renameAsset,
+  deleteAssets,
+  removeAttachment,
+  setSelectedIds,
+} = useWorkspaceAssets({
+  seedDemoData: workspaceId.value !== 'new',
+});
 
 /** A finished agent run adds the source to the list and opens it for editing. */
 function onSourceCreated(setup: DataSourceSetup) {
   addFromSetup(setup);
+}
+
+function onImportSource(sourceId: string) {
+  importFromCatalog(sourceId);
+}
+
+function onRenameAsset(payload: { id: string; name: string }) {
+  renameAsset(payload.id, payload.name);
+}
+
+function onDeleteAssets(ids: string[]) {
+  deleteAssets(ids);
+}
+
+function onRemoveAttachment(id: string) {
+  removeAttachment(id);
+}
+
+function onPublishArtifacts() {
+  // POC: selection-driven publish; wire to API later.
 }
 </script>
 
@@ -59,7 +97,7 @@ function onSourceCreated(setup: DataSourceSetup) {
       <!-- Agent panel -->
       <aside
         class="relative flex flex-col border-r border-[#E2E2E2] bg-white"
-        :class="isEditorOpen ? 'w-[40%] flex-shrink-0' : 'min-w-0 flex-1'"
+        :class="isEditorOpen ? 'w-[40%] flex-shrink-0' : 'w-[70%] min-w-0 flex-shrink-0'"
       >
         <div class="flex flex-shrink-0 items-center gap-2 border-b border-[#E2E2E2] px-4 py-2.5">
           <span class="text-sm font-medium text-[#25262E]">Agent</span>
@@ -76,8 +114,21 @@ function onSourceCreated(setup: DataSourceSetup) {
       </section>
 
       <!-- Otherwise the workspace asset list -->
-      <aside v-else class="flex w-[300px] min-w-0 flex-shrink-0 flex-col border-l border-[#E2E2E2] bg-white">
-        <AssetListPanel :assets="assets" :open-asset-id="openAssetId" @open="openEditor" />
+      <aside v-else class="flex w-[30%] min-w-0 flex-shrink-0 flex-col border-l border-[#E2E2E2] bg-white">
+        <AssetListPanel
+          :assets="assets"
+          :attachments="attachments"
+          :open-asset-id="openAssetId"
+          :selected-ids="selectedIds"
+          :can-publish="canPublish"
+          @open="openEditor"
+          @import="onImportSource"
+          @rename="onRenameAsset"
+          @delete="onDeleteAssets"
+          @remove-attachment="onRemoveAttachment"
+          @publish="onPublishArtifacts"
+          @update:selected-ids="setSelectedIds"
+        />
       </aside>
     </div>
   </div>
