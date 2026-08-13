@@ -144,6 +144,17 @@ export function buildFallbackReply(hasDataSource: boolean): string {
     : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
 }
 
+/** Empty agent: no sources yet and no conversation, so show import / create instead of chat. */
+export function shouldShowAgentEntry(hasSources: boolean, itemCount: number): boolean {
+  return !hasSources && itemCount === 0;
+}
+
+export function buildImportAcknowledgement(sourceName: string): string {
+  const name = sourceName.trim();
+  if (!name) return 'Your data source is in the workspace. Ask me anything about it.';
+  return `${name} is in the workspace. Ask me anything about it.`;
+}
+
 export const STARTER_PROMPTS: string[] = [
   'I need a data source for marketing campaigns',
   'What can you help me with?',
@@ -197,9 +208,16 @@ export function useDataSourceFlow() {
   function cancelWizard(): void {
     if (!isWizardOpen.value) return;
     isWizardOpen.value = false;
+    if (items.value.length === 0) return;
     items.value.push(
       assistantText('No problem, I closed the setup. Mention a data source when you want to retry.'),
     );
+  }
+
+  /** Notes an imported source in the thread so chat can start without a wizard run. */
+  function acknowledgeImport(sourceName: string): void {
+    if (items.value.length > 0 || isAgentRunning.value) return;
+    items.value.push(assistantText(buildImportAcknowledgement(sourceName)));
   }
 
   /** Called when the modal finishes all three steps. */
@@ -259,6 +277,7 @@ export function useDataSourceFlow() {
     cancelWizard,
     completeWizard,
     completeAgentRun,
+    acknowledgeImport,
     sendFreeText,
   };
 }

@@ -74,6 +74,10 @@ const {
   seedDemoData: workspaceId.value !== 'new',
 });
 
+const importedSourceNames = computed(() =>
+  assets.value.filter((asset) => asset.origin === 'imported').map((asset) => asset.name),
+);
+
 /** A finished agent run adds the source to the list and opens it for editing. */
 function onSourceCreated(setup: DataSourceSetup) {
   addFromSetup(setup);
@@ -157,7 +161,12 @@ function onPublishArtifacts() {
         </div>
 
         <div class="min-h-0 flex-1">
-          <SimbaChatPanel @created="onSourceCreated" />
+          <SimbaChatPanel
+            :has-sources="assets.length > 0"
+            :imported-source-names="importedSourceNames"
+            @created="onSourceCreated"
+            @import="onImportSource"
+          />
         </div>
       </aside>
 
