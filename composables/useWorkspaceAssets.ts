@@ -31,6 +31,13 @@ export const ARTIFACT_SECTION_HELP: Record<ArtifactSectionId, string> = {
     'Data sources created in this workspace with the wizard or the agent.',
 };
 
+/** Preview keeps the agent available; edit hides it until the source is saved. */
+export type SourceViewMode = 'preview' | 'edit';
+
+export function isAgentAvailable(mode: SourceViewMode | null): boolean {
+  return mode !== 'edit';
+}
+
 export interface WorkspaceAsset {
   id: string;
   name: string;
@@ -263,28 +270,59 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   const attachments: Ref<ContextAttachment[]> = ref(seedDemoData ? [...SEEDED_ATTACHMENTS] : []);
   const openAssetId = ref<string | null>(null);
   const selectedIds = ref<string[]>([]);
+  const viewMode = ref<SourceViewMode | null>(null);
 
   const isEditorOpen = computed(() => openAssetId.value !== null);
+  const isEditingSource = computed(() => viewMode.value === 'edit');
+  const sourceViewMode = computed<SourceViewMode>(() => viewMode.value ?? 'preview');
   const openAsset = computed(
     () => assets.value.find((asset) => asset.id === openAssetId.value) ?? null,
   );
   const artifactCount = computed(() => assets.value.length + attachments.value.length);
   const canPublish = computed(() => hasSelectedSources(selectedIds.value, assets.value));
 
+  /** Opens a source in preview so the agent stays available. Ignored while editing. */
   function openEditor(id: string): void {
+    if (viewMode.value === 'edit') return;
     if (!assets.value.some((asset) => asset.id === id)) return;
     openAssetId.value = id;
+    viewMode.value = 'preview';
   }
 
   function closeEditor(): void {
     openAssetId.value = null;
+    viewMode.value = null;
   }
 
-  /** Adds a source produced by the agent and opens it in the editor. */
+  function startEdit(): void {
+    if (!openAssetId.value) return;
+    viewMode.value = 'edit';
+  }
+
+  function saveEdits(): boolean {
+    if (viewMode.value !== 'edit' || !openAssetId.value) return false;
+    touchAsset(openAssetId.value);
+    viewMode.value = 'preview';
+    return true;
+  }
+
+  function touchAsset(id: string): void {
+    const index = assets.value.findIndex((asset) => asset.id === id);
+    if (index < 0) return;
+    const current = assets.value[index];
+    assets.value = [
+      ...assets.value.slice(0, index),
+      { ...current, modifiedAt: new Date().toISOString() },
+      ...assets.value.slice(index + 1),
+    ];
+  }
+
+  /** Adds a source produced by the agent and opens it in preview. */
   function addFromSetup(setup: DataSourceSetup): WorkspaceAsset {
     const asset = assetFromSetup(nextAssetId(), setup);
     assets.value = [asset, ...assets.value];
     openAssetId.value = asset.id;
+    viewMode.value = 'preview';
     if (setup.useCase.fileName) {
       addAttachmentFromFileName(setup.useCase.fileName);
     }
@@ -340,6 +378,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     selectedIds.value = selectedIds.value.filter((id) => !idSet.has(id));
     if (openAssetId.value && idSet.has(openAssetId.value)) {
       openAssetId.value = null;
+      viewMode.value = null;
     }
   }
 
@@ -369,8 +408,12 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     artifactCount,
     canPublish,
     isEditorOpen,
+    isEditingSource,
+    sourceViewMode,
     openEditor,
     closeEditor,
+    startEdit,
+    saveEdits,
     addFromSetup,
     addAttachmentFromFileName,
     importFromCatalog,

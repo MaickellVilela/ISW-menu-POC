@@ -155,6 +155,22 @@ defineExpose({ openWizard });
             <button
               type="button"
               class="flex flex-col items-start rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
+              @click="onCreateSource"
+            >
+              <span class="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+                </svg>
+              </span>
+              <span class="text-sm font-semibold text-[#25262E]">Create a data source</span>
+              <span class="mt-1 text-xs leading-relaxed text-[#9A9A9A]">
+                Open the wizard to describe a use case, pick a connection, and choose tables.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="flex flex-col items-start rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
               @click="startImportPick"
             >
               <span class="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
@@ -169,23 +185,22 @@ defineExpose({ openWizard });
                 Add an existing source from inventory and work over it.
               </span>
             </button>
-
-            <button
-              type="button"
-              class="flex flex-col items-start rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
-              @click="onCreateSource"
-            >
-              <span class="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
-                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" stroke-linecap="round" />
-                </svg>
-              </span>
-              <span class="text-sm font-semibold text-[#25262E]">Create a data source</span>
-              <span class="mt-1 text-xs leading-relaxed text-[#9A9A9A]">
-                Open the wizard to describe a use case, pick a connection, and choose tables.
-              </span>
-            </button>
           </div>
+
+          <ul class="mt-8 space-y-2 text-left text-xs leading-relaxed text-[#6B6B6B]">
+            <li class="flex gap-2">
+              <span class="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-[#C9B8E8]" aria-hidden="true"></span>
+              <span>Ask questions about the data — what’s in it, how tables relate, and which metrics matter.</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-[#C9B8E8]" aria-hidden="true"></span>
+              <span>Iterate with the agent on a created or imported source. Those changes stay in preview and don’t need a save.</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-[#C9B8E8]" aria-hidden="true"></span>
+              <span>Open Edit only when you want to change the source yourself. Save to get the agent back.</span>
+            </li>
+          </ul>
         </template>
 
         <template v-else>

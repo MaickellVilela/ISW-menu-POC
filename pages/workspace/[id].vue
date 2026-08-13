@@ -62,8 +62,12 @@ const {
   selectedIds,
   canPublish,
   isEditorOpen,
+  isEditingSource,
+  sourceViewMode,
   openEditor,
   closeEditor,
+  startEdit,
+  saveEdits,
   addFromSetup,
   importFromCatalog,
   renameAsset,
@@ -177,14 +181,18 @@ function onPublishArtifacts() {
       <div class="flex flex-shrink-0 items-center gap-2">
         <button
           type="button"
-          class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC]"
+          class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC] disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="isEditingSource"
+          :title="isEditingSource ? 'Save the source to import' : undefined"
           @click="onHeaderImport"
         >
           Import
         </button>
         <button
           type="button"
-          class="h-8 rounded-md bg-[#3B1770] px-3 text-sm font-medium text-white transition-colors hover:bg-[#2F1259]"
+          class="h-8 rounded-md bg-[#3B1770] px-3 text-sm font-medium text-white transition-colors hover:bg-[#2F1259] disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="isEditingSource"
+          :title="isEditingSource ? 'Save the source to create with the agent' : undefined"
           @click="onHeaderCreate"
         >
           Create
@@ -218,8 +226,9 @@ function onPublishArtifacts() {
 
     <!-- Chat (and editor) fill the workspace; artifacts float when shown -->
     <div class="relative flex min-h-0 flex-1 overflow-hidden">
-      <!-- Agent panel -->
+      <!-- Agent stays mounted so the thread is kept while editing -->
       <aside
+        v-show="!isEditingSource"
         class="relative flex min-h-0 flex-col bg-white"
         :class="isEditorOpen ? 'w-[40%] flex-shrink-0 border-r border-[#E2E2E2]' : 'min-w-0 flex-1'"
       >
@@ -238,9 +247,14 @@ function onPublishArtifacts() {
         </div>
       </aside>
 
-      <!-- Editor: simulated legacy Classic Builder UI, opened from a source -->
+      <!-- Preview while chatting; full editor while editing (agent is hidden) -->
       <section v-if="isEditorOpen" class="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-        <LegacyBuilderPanel @close="closeEditor" />
+        <LegacyBuilderPanel
+          :mode="sourceViewMode"
+          @edit="startEdit"
+          @save="saveEdits"
+          @close="closeEditor"
+        />
       </section>
 
       <aside

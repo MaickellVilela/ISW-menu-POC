@@ -33,14 +33,15 @@ const emit = defineEmits<{
   'update:selectedIds': [ids: string[]];
 }>();
 
-const SOURCE_MENU_ACTIONS = [
-  'Permissions',
-  'Row Security',
-  'Column Security',
-  'Clear cache',
-  'Available Visual Types',
-  'Export source',
-] as const;
+// Inventory simplification: restore these overflow actions with the template v-for below.
+// const SOURCE_MENU_ACTIONS = [
+//   'Permissions',
+//   'Row Security',
+//   'Column Security',
+//   'Clear cache',
+//   'Available Visual Types',
+//   'Export source',
+// ] as const;
 
 const searchQuery = ref('');
 const sortKey = ref<AssetSortKey>('modifiedAt');
@@ -291,6 +292,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <!-- Inventory simplification: search + sort. Uncomment this block to restore. -->
+    <!--
     <div class="flex flex-shrink-0 flex-col gap-2 border-b border-[#E2E2E2] px-3 py-2.5">
       <div class="relative">
         <svg
@@ -341,17 +344,18 @@ onBeforeUnmount(() => {
           </svg>
         </button>
       </div>
+    </div>
+    -->
 
-      <div v-if="selectedIds.length" class="flex items-center justify-between gap-2">
-        <span class="text-[11px] text-[#6B6B6B]">{{ selectedIds.length }} selected</span>
-        <button
-          type="button"
-          class="text-[11px] font-medium text-[#B42318] transition-colors hover:underline"
-          @click="deleteSelected"
-        >
-          Delete
-        </button>
-      </div>
+    <div v-if="selectedIds.length" class="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[#E2E2E2] px-3 py-2.5">
+      <span class="text-[11px] text-[#6B6B6B]">{{ selectedIds.length }} selected</span>
+      <button
+        type="button"
+        class="text-[11px] font-medium text-[#B42318] transition-colors hover:underline"
+        @click="deleteSelected"
+      >
+        Delete
+      </button>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
@@ -533,6 +537,7 @@ onBeforeUnmount(() => {
                       {{ asset.name }}
                     </span>
                     <span class="mt-0.5 block truncate text-[11px] text-[#9A9A9A]">{{ asset.subtitle }}</span>
+                    <!-- Inventory simplification: tags + author. Uncomment to restore.
                     <span class="mt-1 flex flex-wrap items-center gap-1">
                       <span
                         v-for="tag in asset.tags"
@@ -542,8 +547,9 @@ onBeforeUnmount(() => {
                         {{ tag }}
                       </span>
                     </span>
+                    -->
                     <span class="mt-1.5 block text-[10px] text-[#C4C4C4]">
-                      {{ asset.author }} · {{ formatAssetModifiedAt(asset.modifiedAt) }}
+                      {{ formatAssetModifiedAt(asset.modifiedAt) }}
                     </span>
                   </span>
                 </span>
@@ -569,6 +575,7 @@ onBeforeUnmount(() => {
                   class="absolute right-0 top-7 z-20 w-44 overflow-hidden rounded-md border border-[#E2E2E2] bg-white py-1 shadow-md"
                   role="menu"
                 >
+                  <!-- Inventory simplification: restore overflow actions with SOURCE_MENU_ACTIONS.
                   <button
                     v-for="action in SOURCE_MENU_ACTIONS"
                     :key="action"
@@ -580,6 +587,7 @@ onBeforeUnmount(() => {
                     {{ action }}
                   </button>
                   <div class="my-1 border-t border-[#E2E2E2]"></div>
+                  -->
                   <button
                     type="button"
                     class="block w-full px-3 py-1.5 text-left text-[12px] text-[#25262E] hover:bg-[#F8F6FC]"
@@ -699,6 +707,7 @@ onBeforeUnmount(() => {
                       {{ asset.name }}
                     </span>
                     <span class="mt-0.5 block truncate text-[11px] text-[#9A9A9A]">{{ asset.subtitle }}</span>
+                    <!-- Inventory simplification: tags + author. Uncomment to restore.
                     <span class="mt-1 flex flex-wrap items-center gap-1">
                       <span
                         v-for="tag in asset.tags"
@@ -708,8 +717,9 @@ onBeforeUnmount(() => {
                         {{ tag }}
                       </span>
                     </span>
+                    -->
                     <span class="mt-1.5 block text-[10px] text-[#C4C4C4]">
-                      {{ asset.author }} · {{ formatAssetModifiedAt(asset.modifiedAt) }}
+                      {{ formatAssetModifiedAt(asset.modifiedAt) }}
                     </span>
                   </span>
                 </span>
@@ -735,6 +745,7 @@ onBeforeUnmount(() => {
                   class="absolute right-0 top-7 z-20 w-44 overflow-hidden rounded-md border border-[#E2E2E2] bg-white py-1 shadow-md"
                   role="menu"
                 >
+                  <!-- Inventory simplification: restore overflow actions with SOURCE_MENU_ACTIONS.
                   <button
                     v-for="action in SOURCE_MENU_ACTIONS"
                     :key="action"
@@ -746,6 +757,7 @@ onBeforeUnmount(() => {
                     {{ action }}
                   </button>
                   <div class="my-1 border-t border-[#E2E2E2]"></div>
+                  -->
                   <button
                     type="button"
                     class="block w-full px-3 py-1.5 text-left text-[12px] text-[#25262E] hover:bg-[#F8F6FC]"

@@ -1,8 +1,22 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { CONNECTOR_ICONS, type ConnectorKey } from '~/composables/connectorIcons';
+import type { SourceViewMode } from '~/composables/useWorkspaceAssets';
 
-const emit = defineEmits<{ close: [] }>();
+const props = withDefaults(
+  defineProps<{
+    mode?: SourceViewMode;
+  }>(),
+  { mode: 'preview' },
+);
+
+const emit = defineEmits<{
+  close: [];
+  edit: [];
+  save: [];
+}>();
+
+const isPreview = computed(() => props.mode === 'preview');
 
 /**
  * Visual simulation of the legacy (Classic Builder) data source screen.
@@ -65,21 +79,6 @@ const TOOLBAR_ITEMS = [
 ];
 
 const canvasMode = ref<'entity' | 'filter-value'>('entity');
-const justSaved = ref(false);
-
-let savedTimer: number | null = null;
-
-function onSave() {
-  justSaved.value = true;
-  if (savedTimer !== null) window.clearTimeout(savedTimer);
-  savedTimer = window.setTimeout(() => {
-    justSaved.value = false;
-  }, 2000);
-}
-
-onBeforeUnmount(() => {
-  if (savedTimer !== null) window.clearTimeout(savedTimer);
-});
 const activeTab = ref<'connections' | 'files'>('connections');
 const expandedIds = ref<string[]>([]);
 
@@ -92,78 +91,106 @@ function toggleExpanded(id: string): void {
     ? expandedIds.value.filter((entry) => entry !== id)
     : [...expandedIds.value, id];
 }
+
+function onEdit(): void {
+  emit('edit');
+}
+
+function onSave(): void {
+  emit('save');
+}
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col bg-[#F4F4F4]">
+    <p
+      v-if="!isPreview"
+      class="flex-shrink-0 border-b border-[#E2E2E2] bg-[#F8F6FC] px-3 py-1.5 text-[11px] text-[#3B1770]"
+    >
+      You're editing this source. Save to return to the agent.
+    </p>
+
     <!-- Toolbar -->
     <div class="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#E2E2E2] bg-white px-3 py-2">
       <div class="flex min-w-0 items-center gap-6">
-        <button
-          v-for="tool in TOOLBAR_ITEMS"
-          :key="tool.id"
-          type="button"
-          class="flex items-center gap-1.5 text-[11px] text-[#25262E] transition-colors hover:text-[#3B1770]"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4 text-[#6B6B6B]" fill="currentColor">
-            <path :d="tool.path" />
-          </svg>
-          {{ tool.label }}
-        </button>
+        <template v-if="isPreview">
+          <span class="rounded bg-[#F1ECFA] px-2 py-0.5 text-[11px] font-medium text-[#3B1770]">Preview</span>
+        </template>
+        <template v-else>
+          <button
+            v-for="tool in TOOLBAR_ITEMS"
+            :key="tool.id"
+            type="button"
+            class="flex items-center gap-1.5 text-[11px] text-[#25262E] transition-colors hover:text-[#3B1770]"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4 text-[#6B6B6B]" fill="currentColor">
+              <path :d="tool.path" />
+            </svg>
+            {{ tool.label }}
+          </button>
+        </template>
       </div>
 
       <div class="flex flex-shrink-0 items-center gap-3">
-        <!-- Publish -->
-        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Publish">
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M12 15V4m0 0L8.5 7.5M12 4l3.5 3.5" stroke-linecap="round" stroke-linejoin="round" />
-            <path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" stroke-linecap="round" />
-          </svg>
-        </button>
-        <!-- Preview -->
-        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Preview">
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="12" r="8.5" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-        <!-- Duplicate -->
-        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Duplicate">
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="4" y="4" width="11" height="11" rx="1.5" />
-            <path d="M9 20h9a2 2 0 0 0 2-2V9" stroke-linecap="round" />
-          </svg>
-        </button>
-        <!-- Rename -->
-        <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Rename">
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M19 13v6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" stroke-linecap="round" />
-            <path d="M10 14l9-9 1.5 1.5-9 9H10v-1.5z" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </button>
+        <template v-if="isPreview">
+          <button
+            type="button"
+            class="rounded bg-[#3B1770] px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[#4B1E8C]"
+            @click="onEdit"
+          >
+            Edit source
+          </button>
+          <span class="h-5 w-px flex-shrink-0 bg-[#E2E2E2]"></span>
+          <button
+            type="button"
+            class="text-[#6B6B6B] transition-colors hover:text-[#3B1770]"
+            title="Close preview"
+            aria-label="Close preview"
+            @click="emit('close')"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 6l12 12M18 6 6 18" stroke-linecap="round" />
+            </svg>
+          </button>
+        </template>
+        <template v-else>
+          <!-- Publish -->
+          <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Publish">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 15V4m0 0L8.5 7.5M12 4l3.5 3.5" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" stroke-linecap="round" />
+            </svg>
+          </button>
+          <!-- Preview -->
+          <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Preview">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="8.5" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+          <!-- Duplicate -->
+          <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Duplicate">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="4" y="4" width="11" height="11" rx="1.5" />
+              <path d="M9 20h9a2 2 0 0 0 2-2V9" stroke-linecap="round" />
+            </svg>
+          </button>
+          <!-- Rename -->
+          <button type="button" class="text-[#5A6270] transition-colors hover:text-[#3B1770]" title="Rename">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M19 13v6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" stroke-linecap="round" />
+              <path d="M10 14l9-9 1.5 1.5-9 9H10v-1.5z" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
 
-        <button
-          type="button"
-          class="rounded px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors"
-          :class="justSaved ? 'bg-[#1B9E4B]' : 'bg-[#3B1770] hover:bg-[#4B1E8C]'"
-          @click="onSave"
-        >
-          {{ justSaved ? 'Saved' : 'Save Source' }}
-        </button>
-
-        <span class="h-5 w-px flex-shrink-0 bg-[#E2E2E2]"></span>
-
-        <button
-          type="button"
-          class="text-[#6B6B6B] transition-colors hover:text-[#3B1770]"
-          title="Close editor"
-          aria-label="Close editor"
-          @click="emit('close')"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 6l12 12M18 6 6 18" stroke-linecap="round" />
-          </svg>
-        </button>
+          <button
+            type="button"
+            class="rounded bg-[#3B1770] px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[#4B1E8C]"
+            @click="onSave"
+          >
+            Save Source
+          </button>
+        </template>
       </div>
     </div>
 
@@ -173,6 +200,7 @@ function toggleExpanded(id: string): void {
         <div class="relative h-full w-full border border-dashed border-[#C9C9C9] bg-white">
           <!-- Add join -->
           <button
+            v-if="!isPreview"
             type="button"
             class="absolute left-3 top-3 flex cursor-not-allowed items-center gap-1.5 rounded px-2 py-1 text-[11px] text-[#B4B4B4] opacity-60"
             disabled
@@ -236,7 +264,12 @@ function toggleExpanded(id: string): void {
           >
             <img :src="CONNECTOR_ICONS.python" alt="" class="h-3.5 w-3.5 flex-shrink-0 object-contain" />
             <span class="min-w-0 flex-1 truncate text-[11px] text-[#25262E]">campaign_factor_…</span>
-            <button type="button" class="flex-shrink-0 text-[#6B6B6B] hover:text-[#3B1770]" title="Collapse">
+            <button
+              v-if="!isPreview"
+              type="button"
+              class="flex-shrink-0 text-[#6B6B6B] hover:text-[#3B1770]"
+              title="Collapse"
+            >
               <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M8 12h8" stroke-linecap="round" />
@@ -283,8 +316,8 @@ function toggleExpanded(id: string): void {
         </div>
       </div>
 
-      <!-- Right panel -->
-      <div class="flex w-[262px] flex-shrink-0 border-l border-[#E2E2E2] bg-white">
+      <!-- Right panel: connections and files, editing only -->
+      <div v-if="!isPreview" class="flex w-[262px] flex-shrink-0 border-l border-[#E2E2E2] bg-white">
         <!-- Icon rail: vertical tabs, the active cell merges into the panel -->
         <div class="flex w-11 flex-shrink-0 flex-col border-[#E2E2E2] text-[#6B6B6B]">
           <button
