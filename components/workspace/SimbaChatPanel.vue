@@ -137,6 +137,8 @@ function setupHeadline(item: FlowItem): string {
 function setupSections(item: FlowItem) {
   return item.setup ? buildSetupSections(item.setup) : [];
 }
+
+defineExpose({ openWizard });
 </script>
 
 <template>

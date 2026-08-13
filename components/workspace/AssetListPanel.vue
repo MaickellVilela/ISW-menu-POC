@@ -2,11 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
 import {
+  ARTIFACT_SECTION_HELP,
   IMPORTABLE_SOURCES,
   filterAssetsByQuery,
   formatAssetModifiedAt,
   partitionSourceAssets,
   sortAssets,
+  type ArtifactSectionId,
   type AssetSortKey,
   type ContextAttachment,
   type WorkspaceAsset,
@@ -27,10 +29,9 @@ const emit = defineEmits<{
   delete: [ids: string[]];
   'remove-attachment': [id: string];
   publish: [];
+  hide: [];
   'update:selectedIds': [ids: string[]];
 }>();
-
-type ArtifactSectionId = 'context' | 'imported' | 'generated';
 
 const SOURCE_MENU_ACTIONS = [
   'Permissions',
@@ -49,11 +50,11 @@ const menuAssetId = ref<string | null>(null);
 const renamingId = ref<string | null>(null);
 const renameDraft = ref('');
 
-/** Empty sections start collapsed; sections with items start open. */
+/** Sections stay open so empty-state help is visible when the panel is shown. */
 const sectionOpen = ref<Record<ArtifactSectionId, boolean>>({
-  context: props.attachments.length > 0,
-  imported: props.assets.some((asset) => asset.origin === 'imported'),
-  generated: props.assets.some((asset) => asset.origin === 'generated'),
+  context: true,
+  imported: true,
+  generated: true,
 });
 
 const SORT_OPTIONS: { value: AssetSortKey; label: string }[] = [
@@ -244,6 +245,16 @@ function onPublish(): void {
   emit('publish');
 }
 
+function hidePanel(): void {
+  emit('hide');
+}
+
+function sectionHelp(id: ArtifactSectionId): string {
+  return ARTIFACT_SECTION_HELP[id];
+}
+
+defineExpose({ openImport });
+
 function onDocumentClick(event: MouseEvent): void {
   const target = event.target as HTMLElement | null;
   if (!target?.closest('[data-asset-menu]')) {
@@ -264,7 +275,20 @@ onBeforeUnmount(() => {
   <div class="relative flex h-full min-h-0 flex-col bg-white">
     <div class="flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] px-4 py-2.5">
       <span class="text-sm font-medium text-[#25262E]">Artifacts</span>
-      <span class="text-[11px] text-[#9A9A9A]">{{ artifactCount }}</span>
+      <div class="flex items-center gap-1">
+        <span class="text-[11px] text-[#9A9A9A]">{{ artifactCount }}</span>
+        <button
+          type="button"
+          class="flex h-7 w-7 items-center justify-center rounded-md text-[#6B6B6B] transition-colors hover:bg-[#F1F1F1] hover:text-[#25262E]"
+          title="Hide artifacts"
+          aria-label="Hide artifacts"
+          @click="hidePanel"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="flex flex-shrink-0 flex-col gap-2 border-b border-[#E2E2E2] px-3 py-2.5">
@@ -316,14 +340,6 @@ onBeforeUnmount(() => {
             <path v-else d="M8 7h2M8 12h5M8 17h8" stroke-linecap="round" />
           </svg>
         </button>
-
-        <button
-          type="button"
-          class="h-8 flex-shrink-0 rounded-md border border-[#E2E2E2] bg-white px-2.5 text-[11px] font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC]"
-          @click="openImport"
-        >
-          Import
-        </button>
       </div>
 
       <div v-if="selectedIds.length" class="flex items-center justify-between gap-2">
@@ -352,28 +368,49 @@ onBeforeUnmount(() => {
 
       <!-- Context attachments -->
       <section class="mb-1 border-b border-[#E2E2E2] pb-1">
-        <button
-          type="button"
-          class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
-          :aria-expanded="isSectionOpen('context')"
-          @click="toggleSection('context')"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
-            :class="isSectionOpen('context') ? 'rotate-90' : ''"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
+            :aria-expanded="isSectionOpen('context')"
+            @click="toggleSection('context')"
           >
-            <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">
-            Context attachments
+            <svg
+              viewBox="0 0 24 24"
+              class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
+              :class="isSectionOpen('context') ? 'rotate-90' : ''"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">
+              Context attachments
+            </span>
+            <span class="text-[10px] text-[#C4C4C4]">{{ filteredAttachments.length }}</span>
+          </button>
+          <span v-if="filteredAttachments.length" class="group relative flex-shrink-0">
+            <button
+              type="button"
+              class="flex h-5 w-5 items-center justify-center rounded-full text-[#C4C4C4] transition-colors hover:bg-[#F8F6FC] hover:text-[#6B6B6B]"
+              :aria-label="sectionHelp('context')"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5" stroke-linecap="round" />
+                <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            <span
+              role="tooltip"
+              class="pointer-events-none invisible absolute right-0 top-6 z-30 w-56 rounded-md border border-[#E2E2E2] bg-white px-2.5 py-2 text-[11px] leading-relaxed text-[#6B6B6B] shadow-md group-hover:visible group-focus-within:visible"
+            >
+              {{ sectionHelp('context') }}
+            </span>
           </span>
-          <span class="text-[10px] text-[#C4C4C4]">{{ filteredAttachments.length }}</span>
-        </button>
+        </div>
 
         <div v-if="isSectionOpen('context')" class="mt-0.5 space-y-0.5 pb-1">
           <div
@@ -399,34 +436,55 @@ onBeforeUnmount(() => {
               </svg>
             </button>
           </div>
-          <p v-if="!filteredAttachments.length" class="px-1.5 py-1 text-[11px] text-[#C4C4C4]">
-            No attachments
+          <p v-if="!filteredAttachments.length" class="px-1.5 py-1 text-[11px] leading-relaxed text-[#9A9A9A]">
+            {{ sectionHelp('context') }}
           </p>
         </div>
       </section>
 
       <!-- Imported sources -->
       <section class="mb-1 border-b border-[#E2E2E2] pb-1">
-        <button
-          type="button"
-          class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
-          :aria-expanded="isSectionOpen('imported')"
-          @click="toggleSection('imported')"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
-            :class="isSectionOpen('imported') ? 'rotate-90' : ''"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
+            :aria-expanded="isSectionOpen('imported')"
+            @click="toggleSection('imported')"
           >
-            <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">Imported</span>
-          <span class="text-[10px] text-[#C4C4C4]">{{ sectionedSources.imported.length }}</span>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
+              :class="isSectionOpen('imported') ? 'rotate-90' : ''"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">Imported</span>
+            <span class="text-[10px] text-[#C4C4C4]">{{ sectionedSources.imported.length }}</span>
+          </button>
+          <span v-if="sectionedSources.imported.length" class="group relative flex-shrink-0">
+            <button
+              type="button"
+              class="flex h-5 w-5 items-center justify-center rounded-full text-[#C4C4C4] transition-colors hover:bg-[#F8F6FC] hover:text-[#6B6B6B]"
+              :aria-label="sectionHelp('imported')"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5" stroke-linecap="round" />
+                <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            <span
+              role="tooltip"
+              class="pointer-events-none invisible absolute right-0 top-6 z-30 w-56 rounded-md border border-[#E2E2E2] bg-white px-2.5 py-2 text-[11px] leading-relaxed text-[#6B6B6B] shadow-md group-hover:visible group-focus-within:visible"
+            >
+              {{ sectionHelp('imported') }}
+            </span>
+          </span>
+        </div>
 
         <div v-if="isSectionOpen('imported')" class="mt-0.5 space-y-1.5 pb-1">
           <article
@@ -542,46 +600,57 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </article>
-          <div
-            v-if="!sectionedSources.imported.length"
-            class="flex flex-col items-start gap-2 px-1.5 py-1"
-          >
-            <p class="text-[11px] text-[#C4C4C4]">No imported sources</p>
-            <button
-              type="button"
-              class="rounded-md border border-[#E2E2E2] bg-white px-3 py-1.5 text-[12px] font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC]"
-              @click="openImport"
-            >
-              Import source
-            </button>
-          </div>
+          <p v-if="!sectionedSources.imported.length" class="px-1.5 py-1 text-[11px] leading-relaxed text-[#9A9A9A]">
+            {{ sectionHelp('imported') }}
+          </p>
         </div>
       </section>
 
       <!-- Generated output -->
       <section class="mb-1">
-        <button
-          type="button"
-          class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
-          :aria-expanded="isSectionOpen('generated')"
-          @click="toggleSection('generated')"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
-            :class="isSectionOpen('generated') ? 'rotate-90' : ''"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#F8F6FC]"
+            :aria-expanded="isSectionOpen('generated')"
+            @click="toggleSection('generated')"
           >
-            <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">
-            Generated output
+            <svg
+              viewBox="0 0 24 24"
+              class="h-3 w-3 flex-shrink-0 text-[#9A9A9A] transition-transform"
+              :class="isSectionOpen('generated') ? 'rotate-90' : ''"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span class="text-[11px] font-medium uppercase tracking-wide text-[#6B6B6B]">
+              Generated output
+            </span>
+            <span class="text-[10px] text-[#C4C4C4]">{{ sectionedSources.generated.length }}</span>
+          </button>
+          <span v-if="sectionedSources.generated.length" class="group relative flex-shrink-0">
+            <button
+              type="button"
+              class="flex h-5 w-5 items-center justify-center rounded-full text-[#C4C4C4] transition-colors hover:bg-[#F8F6FC] hover:text-[#6B6B6B]"
+              :aria-label="sectionHelp('generated')"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5" stroke-linecap="round" />
+                <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            <span
+              role="tooltip"
+              class="pointer-events-none invisible absolute right-0 top-6 z-30 w-56 rounded-md border border-[#E2E2E2] bg-white px-2.5 py-2 text-[11px] leading-relaxed text-[#6B6B6B] shadow-md group-hover:visible group-focus-within:visible"
+            >
+              {{ sectionHelp('generated') }}
+            </span>
           </span>
-          <span class="text-[10px] text-[#C4C4C4]">{{ sectionedSources.generated.length }}</span>
-        </button>
+        </div>
 
         <div v-if="isSectionOpen('generated')" class="mt-0.5 space-y-1.5 pb-1">
           <article
@@ -697,8 +766,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </article>
-          <p v-if="!sectionedSources.generated.length" class="px-1.5 py-1 text-[11px] text-[#C4C4C4]">
-            No generated sources
+          <p v-if="!sectionedSources.generated.length" class="px-1.5 py-1 text-[11px] leading-relaxed text-[#9A9A9A]">
+            {{ sectionHelp('generated') }}
           </p>
         </div>
       </section>

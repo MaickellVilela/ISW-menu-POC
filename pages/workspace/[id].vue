@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
@@ -70,9 +70,36 @@ const {
   deleteAssets,
   removeAttachment,
   setSelectedIds,
+  artifactCount,
 } = useWorkspaceAssets({
   seedDemoData: workspaceId.value !== 'new',
 });
+
+const chatPanelRef = ref<{ openWizard: () => void } | null>(null);
+const artifactsPanelRef = ref<{ openImport: () => void } | null>(null);
+const isArtifactsOpen = ref(artifactCount.value > 0);
+
+watch(artifactCount, (count, previous) => {
+  if (count > (previous ?? 0)) isArtifactsOpen.value = true;
+});
+
+function toggleArtifacts(): void {
+  isArtifactsOpen.value = !isArtifactsOpen.value;
+}
+
+function hideArtifacts(): void {
+  isArtifactsOpen.value = false;
+}
+
+async function onHeaderImport(): Promise<void> {
+  isArtifactsOpen.value = true;
+  await nextTick();
+  artifactsPanelRef.value?.openImport();
+}
+
+function onHeaderCreate(): void {
+  chatPanelRef.value?.openWizard();
+}
 
 const importedSourceNames = computed(() =>
   assets.value.filter((asset) => asset.origin === 'imported').map((asset) => asset.name),
@@ -107,8 +134,8 @@ function onPublishArtifacts() {
 <template>
   <div class="flex h-full flex-col overflow-hidden bg-[#F1F1F1]">
     <!-- Workspace header -->
-    <header class="flex flex-shrink-0 items-center border-b border-[#E2E2E2] bg-white px-5 py-3">
-      <div class="flex items-center gap-3">
+    <header class="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[#E2E2E2] bg-white px-5 py-3">
+      <div class="flex min-w-0 items-center gap-3">
         <NuxtLink
           to="/workspace"
           class="flex h-8 w-8 items-center justify-center rounded-md text-[#6B6B6B] transition-colors hover:bg-[#F1F1F1] hover:text-[#25262E]"
@@ -147,14 +174,54 @@ function onPublishArtifacts() {
         </template>
       </div>
 
+      <div class="flex flex-shrink-0 items-center gap-2">
+        <button
+          type="button"
+          class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC]"
+          @click="onHeaderImport"
+        >
+          Import
+        </button>
+        <button
+          type="button"
+          class="h-8 rounded-md bg-[#3B1770] px-3 text-sm font-medium text-white transition-colors hover:bg-[#2F1259]"
+          @click="onHeaderCreate"
+        >
+          Create
+        </button>
+        <button
+          type="button"
+          class="relative flex h-8 w-8 items-center justify-center rounded-md transition-colors"
+          :class="
+            isArtifactsOpen
+              ? 'bg-[#F5F1FC] text-[#3B1770]'
+              : 'text-[#6B6B6B] hover:bg-[#F1F1F1] hover:text-[#25262E]'
+          "
+          :title="isArtifactsOpen ? 'Hide artifacts' : 'Show artifacts'"
+          :aria-label="isArtifactsOpen ? 'Hide artifacts' : 'Show artifacts'"
+          :aria-pressed="isArtifactsOpen"
+          @click="toggleArtifacts"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M15 4v16" />
+          </svg>
+          <span
+            v-if="!isArtifactsOpen && artifactCount"
+            class="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#3B1770] px-1 text-[9px] font-medium text-white"
+          >
+            {{ artifactCount }}
+          </span>
+        </button>
+      </div>
     </header>
 
-    <!-- Chat centered with the asset list, or split with the editor once a source exists -->
-    <div class="flex min-h-0 flex-1">
+    <!-- Chat (and editor) fill the workspace; artifacts float when shown -->
+    <div class="relative flex min-h-0 flex-1 overflow-hidden">
       <!-- Agent panel -->
       <aside
-        class="relative flex flex-col border-r border-[#E2E2E2] bg-white"
-        :class="isEditorOpen ? 'w-[40%] flex-shrink-0' : 'w-[70%] min-w-0 flex-shrink-0'"
+        class="relative flex min-h-0 flex-col bg-white"
+        :class="isEditorOpen ? 'w-[40%] flex-shrink-0 border-r border-[#E2E2E2]' : 'min-w-0 flex-1'"
       >
         <div class="flex flex-shrink-0 items-center gap-2 border-b border-[#E2E2E2] px-4 py-2.5">
           <span class="text-sm font-medium text-[#25262E]">Agent</span>
@@ -162,6 +229,7 @@ function onPublishArtifacts() {
 
         <div class="min-h-0 flex-1">
           <SimbaChatPanel
+            ref="chatPanelRef"
             :has-sources="assets.length > 0"
             :imported-source-names="importedSourceNames"
             @created="onSourceCreated"
@@ -171,13 +239,16 @@ function onPublishArtifacts() {
       </aside>
 
       <!-- Editor: simulated legacy Classic Builder UI, opened from a source -->
-      <section v-if="isEditorOpen" class="flex min-h-0 w-[60%] min-w-0 flex-shrink-0 flex-col bg-white">
+      <section v-if="isEditorOpen" class="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
         <LegacyBuilderPanel @close="closeEditor" />
       </section>
 
-      <!-- Otherwise the workspace asset list -->
-      <aside v-else class="flex w-[30%] min-w-0 flex-shrink-0 flex-col border-l border-[#E2E2E2] bg-white">
+      <aside
+        v-if="isArtifactsOpen"
+        class="absolute bottom-3 right-3 top-3 z-20 flex w-[22rem] flex-col overflow-hidden rounded-xl border border-[#E2E2E2] bg-white shadow-lg"
+      >
         <AssetListPanel
+          ref="artifactsPanelRef"
           :assets="assets"
           :attachments="attachments"
           :open-asset-id="openAssetId"
@@ -189,6 +260,7 @@ function onPublishArtifacts() {
           @delete="onDeleteAssets"
           @remove-attachment="onRemoveAttachment"
           @publish="onPublishArtifacts"
+          @hide="hideArtifacts"
           @update:selected-ids="setSelectedIds"
         />
       </aside>

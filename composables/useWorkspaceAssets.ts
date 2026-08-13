@@ -19,6 +19,18 @@ export interface ContextAttachment {
   kind: ContextAttachmentKind;
 }
 
+export type ArtifactSectionId = 'context' | 'imported' | 'generated';
+
+/** Shown on empty sections, and as a tooltip once the section has items. */
+export const ARTIFACT_SECTION_HELP: Record<ArtifactSectionId, string> = {
+  context:
+    'Files attached in the data source wizard. They give the agent extra context for this workspace.',
+  imported:
+    'Existing data sources brought in from inventory so you can work over them here.',
+  generated:
+    'Data sources created in this workspace with the wizard or the agent.',
+};
+
 export interface WorkspaceAsset {
   id: string;
   name: string;
@@ -92,6 +104,11 @@ export function assetFromImportable(id: string, source: ImportableSource): Works
     tags: [...source.tags, 'imported'],
     origin: 'imported',
   };
+}
+
+/** Wizard files are pdf or treated as images for this POC. */
+export function kindFromFileName(fileName: string): ContextAttachmentKind {
+  return fileName.trim().toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
 }
 
 /** Case-insensitive match on name, subtitle, author, or tags. */
@@ -268,7 +285,23 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     const asset = assetFromSetup(nextAssetId(), setup);
     assets.value = [asset, ...assets.value];
     openAssetId.value = asset.id;
+    if (setup.useCase.fileName) {
+      addAttachmentFromFileName(setup.useCase.fileName);
+    }
     return asset;
+  }
+
+  /** Copies a wizard upload into context attachments. */
+  function addAttachmentFromFileName(fileName: string): ContextAttachment | null {
+    const name = fileName.trim();
+    if (!name) return null;
+    const attachment: ContextAttachment = {
+      id: `ctx-${nextAssetId()}`,
+      name,
+      kind: kindFromFileName(name),
+    };
+    attachments.value = [attachment, ...attachments.value];
+    return attachment;
   }
 
   /** Copies an inventory source into the workspace artifacts list. */
@@ -339,6 +372,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     openEditor,
     closeEditor,
     addFromSetup,
+    addAttachmentFromFileName,
     importFromCatalog,
     renameAsset,
     deleteAssets,
