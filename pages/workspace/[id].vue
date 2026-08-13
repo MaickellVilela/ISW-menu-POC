@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
@@ -7,6 +7,8 @@ import { useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
 import type { DataSourceSetup } from '~/composables/useDataSourceFlow';
 
 const route = useRoute();
+
+const FALLBACK_WORKSPACE_NAME = 'Workspace';
 
 /** Demo catalog — keep in sync with the list page for this POC. */
 const WORKSPACE_NAMES: Record<string, string> = {
@@ -18,9 +20,39 @@ const WORKSPACE_NAMES: Record<string, string> = {
 
 const workspaceId = computed(() => String(route.params.id));
 
-const workspaceName = computed(() => {
-  return WORKSPACE_NAMES[workspaceId.value] ?? 'Workspace';
-});
+function nameForWorkspaceId(id: string): string {
+  return WORKSPACE_NAMES[id] ?? FALLBACK_WORKSPACE_NAME;
+}
+
+/** Keeps the current name when the draft is blank or whitespace. */
+function trimmedOrFallback(draft: string, fallback: string): string {
+  const name = draft.trim();
+  return name || fallback;
+}
+
+const workspaceName = ref(nameForWorkspaceId(workspaceId.value));
+const isEditingName = ref(false);
+const nameDraft = ref('');
+const nameInputRef = ref<HTMLInputElement | null>(null);
+
+async function startNameEdit(): Promise<void> {
+  nameDraft.value = workspaceName.value;
+  isEditingName.value = true;
+  await nextTick();
+  nameInputRef.value?.focus();
+  nameInputRef.value?.select();
+}
+
+function commitNameEdit(): void {
+  if (!isEditingName.value) return;
+  workspaceName.value = trimmedOrFallback(nameDraft.value, workspaceName.value);
+  isEditingName.value = false;
+}
+
+function cancelNameEdit(): void {
+  isEditingName.value = false;
+  nameDraft.value = '';
+}
 
 const {
   assets,
@@ -83,7 +115,28 @@ function onPublishArtifacts() {
             <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </NuxtLink>
-        <h1 class="text-base font-semibold text-[#25262E]">{{ workspaceName }}</h1>
+        <h1 class="min-w-0 text-base font-semibold text-[#25262E]">
+          <input
+            v-if="isEditingName"
+            ref="nameInputRef"
+            v-model="nameDraft"
+            type="text"
+            class="h-8 min-w-[10rem] max-w-sm rounded border border-[#3B1770] bg-white px-1.5 text-base font-semibold text-[#25262E] outline-none"
+            aria-label="Workspace name"
+            @keydown.enter.prevent="commitNameEdit"
+            @keydown.esc.prevent="cancelNameEdit"
+            @blur="commitNameEdit"
+          />
+          <button
+            v-else
+            type="button"
+            class="-mx-1 cursor-text rounded px-1 text-left hover:bg-[#F1F1F1]"
+            title="Click to rename"
+            @click="startNameEdit"
+          >
+            {{ workspaceName }}
+          </button>
+        </h1>
         <template v-if="openAsset">
           <span class="text-sm text-[#C4C4C4]">/</span>
           <span class="text-sm text-[#25262E]">{{ openAsset.name }}</span>
