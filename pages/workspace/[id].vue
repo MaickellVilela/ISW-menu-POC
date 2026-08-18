@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
 import { useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
-import type { DataSourceSetup } from '~/composables/useDataSourceFlow';
+import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
 
 const route = useRoute();
 
@@ -68,6 +68,7 @@ const {
   closeEditor,
   startEdit,
   saveEdits,
+  endEditing,
   addFromSetup,
   importFromCatalog,
   renameAsset,
@@ -117,6 +118,36 @@ function onSourceCreated(setup: DataSourceSetup) {
 function onImportSource(sourceId: string) {
   importFromCatalog(sourceId);
 }
+
+const isPreviewUpdating = ref(false);
+let previewUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopPreviewUpdate(): void {
+  if (previewUpdateTimer !== null) clearTimeout(previewUpdateTimer);
+  previewUpdateTimer = null;
+  isPreviewUpdating.value = false;
+}
+
+/** Prototype: an "edit" prompt shimmers the open preview while the agent "applies" changes. */
+function onIteratePreview(): void {
+  if (!isEditorOpen.value || isEditingSource.value) return;
+  stopPreviewUpdate();
+  isPreviewUpdating.value = true;
+  previewUpdateTimer = setTimeout(() => {
+    previewUpdateTimer = null;
+    isPreviewUpdating.value = false;
+  }, PREVIEW_ITERATION_MS);
+}
+
+watch(isEditingSource, (editing) => {
+  if (editing) stopPreviewUpdate();
+});
+
+watch(isEditorOpen, (open) => {
+  if (!open) stopPreviewUpdate();
+});
+
+onBeforeUnmount(stopPreviewUpdate);
 
 function onRenameAsset(payload: { id: string; name: string }) {
   renameAsset(payload.id, payload.name);
@@ -190,7 +221,7 @@ function onPublishArtifacts() {
         </button>
         <button
           type="button"
-          class="h-8 rounded-md bg-[#3B1770] px-3 text-sm font-medium text-white transition-colors hover:bg-[#2F1259] disabled:cursor-not-allowed disabled:opacity-40"
+          class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC] disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="isEditingSource"
           :title="isEditingSource ? 'Save the source to create with the agent' : undefined"
           @click="onHeaderCreate"
@@ -243,6 +274,7 @@ function onPublishArtifacts() {
             :imported-source-names="importedSourceNames"
             @created="onSourceCreated"
             @import="onImportSource"
+            @iterate="onIteratePreview"
           />
         </div>
       </aside>
@@ -251,8 +283,10 @@ function onPublishArtifacts() {
       <section v-if="isEditorOpen" class="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
         <LegacyBuilderPanel
           :mode="sourceViewMode"
+          :updating="isPreviewUpdating"
           @edit="startEdit"
           @save="saveEdits"
+          @end="endEditing"
           @close="closeEditor"
         />
       </section>

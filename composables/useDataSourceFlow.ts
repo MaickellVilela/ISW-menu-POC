@@ -77,11 +77,20 @@ export interface FlowItem {
 // --- Pure helpers (side-effect free so they can be unit tested) ---
 
 const DATA_SOURCE_INTENT = /\bdata[\s_-]?sources?\b/i;
+const EDIT_INTENT = /\bedit\b/i;
 
 /** Simulated intent recognition: the agent offers the modal when a data source is mentioned. */
 export function detectsDataSourceIntent(text: string): boolean {
   return DATA_SOURCE_INTENT.test(text);
 }
+
+/** Prototype shortcut: any message with "edit" iterates on the open preview. */
+export function detectsEditIntent(text: string): boolean {
+  return EDIT_INTENT.test(text);
+}
+
+/** How long the preview shimmer runs after an agent edit. */
+export const PREVIEW_ITERATION_MS = 2800;
 
 export function buildSetupSections(setup: DataSourceSetup): SummarySection[] {
   const useCaseLines = [setup.useCase.description];
@@ -142,6 +151,10 @@ export function buildFallbackReply(hasDataSource: boolean): string {
   return hasDataSource
     ? 'I can answer from the data source you just created, or build another one — just mention a data source.'
     : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
+}
+
+export function buildEditIterationReply(): string {
+  return "I'm applying that to the data source. Watch the preview — changes stay there and don't need a save.";
 }
 
 /** Empty agent: no sources yet and no conversation, so show import / create instead of chat. */
@@ -249,6 +262,11 @@ export function useDataSourceFlow() {
     if (!text || isAgentRunning.value) return;
     suggestedQuestions.value = [];
     items.value.push(userText(text));
+
+    if (detectsEditIntent(text)) {
+      items.value.push(assistantText(buildEditIterationReply()));
+      return;
+    }
 
     if (detectsDataSourceIntent(text)) {
       items.value.push(assistantText(buildIntentReply(hasDataSource.value)));

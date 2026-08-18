@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { CONNECTOR_ICONS, type ConnectorKey } from '~/composables/connectorIcons';
-import type { SourceViewMode } from '~/composables/useWorkspaceAssets';
+import { editorExitLabel, type SourceViewMode } from '~/composables/useWorkspaceAssets';
 
 const props = withDefaults(
   defineProps<{
     mode?: SourceViewMode;
+    updating?: boolean;
   }>(),
-  { mode: 'preview' },
+  { mode: 'preview', updating: false },
 );
 
 const emit = defineEmits<{
   close: [];
   edit: [];
   save: [];
+  end: [];
 }>();
 
 const isPreview = computed(() => props.mode === 'preview');
@@ -81,6 +83,16 @@ const TOOLBAR_ITEMS = [
 const canvasMode = ref<'entity' | 'filter-value'>('entity');
 const activeTab = ref<'connections' | 'files'>('connections');
 const expandedIds = ref<string[]>([]);
+const hasUnsavedChanges = ref(false);
+
+watch(
+  () => props.mode,
+  (mode) => {
+    if (mode === 'edit') hasUnsavedChanges.value = false;
+  },
+);
+
+const exitLabel = computed(() => editorExitLabel(hasUnsavedChanges.value));
 
 function isExpanded(id: string): boolean {
   return expandedIds.value.includes(id);
@@ -92,6 +104,25 @@ function toggleExpanded(id: string): void {
     : [...expandedIds.value, id];
 }
 
+function markDirty(): void {
+  if (isPreview.value) return;
+  hasUnsavedChanges.value = true;
+}
+
+function onCanvasMode(mode: 'entity' | 'filter-value'): void {
+  if (canvasMode.value === mode) return;
+  canvasMode.value = mode;
+  markDirty();
+}
+
+function onToolClick(): void {
+  markDirty();
+}
+
+function onAddSqlEntity(): void {
+  markDirty();
+}
+
 function onEdit(): void {
   emit('edit');
 }
@@ -99,15 +130,40 @@ function onEdit(): void {
 function onSave(): void {
   emit('save');
 }
+
+function onEndEditing(): void {
+  emit('end');
+}
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-[#F4F4F4]">
+  <div class="relative flex h-full min-h-0 flex-col bg-[#F4F4F4]">
+    <div
+      v-if="updating"
+      class="preview-update-overlay absolute inset-0 z-30 flex items-center justify-center"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span class="relative z-10 rounded-full bg-white/90 px-3 py-1.5 text-[12px] font-medium text-[#3B1770] shadow-sm">
+        Updating preview…
+      </span>
+    </div>
     <p
       v-if="!isPreview"
-      class="flex-shrink-0 border-b border-[#E2E2E2] bg-[#F8F6FC] px-3 py-1.5 text-[11px] text-[#3B1770]"
+      class="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[#E2E2E2] bg-[#F8F6FC] px-3 py-1.5 text-[11px] text-[#3B1770]"
     >
-      You're editing this source. Save to return to the agent.
+      <span>{{
+        hasUnsavedChanges
+          ? "You're editing this source. Save to keep changes, or discard to return to the agent."
+          : "You're editing this source. Save to return to the agent."
+      }}</span>
+      <button
+        type="button"
+        class="flex-shrink-0 rounded border border-[#E2E2E2] bg-white px-2 py-0.5 text-[11px] font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC]"
+        @click="onEndEditing"
+      >
+        {{ exitLabel }}
+      </button>
     </p>
 
     <!-- Toolbar -->
@@ -122,6 +178,7 @@ function onSave(): void {
             :key="tool.id"
             type="button"
             class="flex items-center gap-1.5 text-[11px] text-[#25262E] transition-colors hover:text-[#3B1770]"
+            @click="onToolClick"
           >
             <svg viewBox="0 0 24 24" class="h-4 w-4 text-[#6B6B6B]" fill="currentColor">
               <path :d="tool.path" />
@@ -219,7 +276,7 @@ function onSave(): void {
               type="button"
               class="px-3 py-1.5 transition-colors"
               :class="canvasMode === 'entity' ? 'bg-[#3B1770] text-white' : 'bg-white text-[#6B6B6B] hover:bg-[#F5F1FC]'"
-              @click="canvasMode = 'entity'"
+              @click="onCanvasMode('entity')"
             >
               Entity
             </button>
@@ -227,7 +284,7 @@ function onSave(): void {
               type="button"
               class="px-3 py-1.5 transition-colors"
               :class="canvasMode === 'filter-value' ? 'bg-[#3B1770] text-white' : 'bg-white text-[#6B6B6B] hover:bg-[#F5F1FC]'"
-              @click="canvasMode = 'filter-value'"
+              @click="onCanvasMode('filter-value')"
             >
               Filter Value
             </button>
@@ -415,6 +472,7 @@ function onSave(): void {
             <button
               type="button"
               class="w-full rounded border border-[#D8D8D8] py-2 text-[12px] text-[#25262E] transition-colors hover:border-[#3B1770] hover:text-[#3B1770]"
+              @click="onAddSqlEntity"
             >
               Add SQL Entity
             </button>
@@ -424,3 +482,30 @@ function onSave(): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+.preview-update-overlay {
+  background: rgba(255, 255, 255, 0.45);
+}
+.preview-update-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.8) 50%,
+    transparent 75%
+  );
+  background-size: 200% 100%;
+  animation: preview-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes preview-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+</style>

@@ -38,6 +38,11 @@ export function isAgentAvailable(mode: SourceViewMode | null): boolean {
   return mode !== 'edit';
 }
 
+/** Secondary banner action: leave without saving. Label depends on whether the source was changed. */
+export function editorExitLabel(hasUnsavedChanges: boolean): string {
+  return hasUnsavedChanges ? 'Discard changes' : 'Back to agent';
+}
+
 export interface WorkspaceAsset {
   id: string;
   name: string;
@@ -306,6 +311,13 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     return true;
   }
 
+  /** Leaves edit mode without persisting. Unsaved canvas changes are dropped. */
+  function endEditing(): boolean {
+    if (viewMode.value !== 'edit' || !openAssetId.value) return false;
+    viewMode.value = 'preview';
+    return true;
+  }
+
   function touchAsset(id: string): void {
     const index = assets.value.findIndex((asset) => asset.id === id);
     if (index < 0) return;
@@ -414,6 +426,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     closeEditor,
     startEdit,
     saveEdits,
+    endEditing,
     addFromSetup,
     addAttachmentFromFileName,
     importFromCatalog,

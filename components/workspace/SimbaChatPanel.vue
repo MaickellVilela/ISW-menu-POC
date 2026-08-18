@@ -4,6 +4,7 @@ import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
 import {
   buildSetupHeadline,
   buildSetupSections,
+  detectsEditIntent,
   shouldShowAgentEntry,
   useDataSourceFlow,
   type DataSourceSetup,
@@ -32,6 +33,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   created: [setup: DataSourceSetup];
   import: [sourceId: string];
+  iterate: [];
 }>();
 
 const {
@@ -126,7 +128,9 @@ function ask(question: string) {
 
 function onSend() {
   if (!canSend.value) return;
-  sendFreeText(draft.value);
+  const text = draft.value;
+  sendFreeText(text);
+  if (detectsEditIntent(text)) emit('iterate');
   draft.value = '';
 }
 
@@ -184,6 +188,45 @@ defineExpose({ openWizard });
               <span class="mt-1 text-xs leading-relaxed text-[#9A9A9A]">
                 Add an existing source from inventory and work over it.
               </span>
+            </button>
+          </div>
+
+          <p class="mb-2 mt-6 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">
+            Recent data sources
+          </p>
+          <div class="space-y-1">
+            <button
+              v-for="source in IMPORTABLE_SOURCES"
+              :key="source.id"
+              type="button"
+              class="flex w-full items-center gap-2 rounded-lg border border-[#E2E2E2] px-3 py-2 text-left transition-colors"
+              :class="
+                alreadyImportedNames.has(source.name)
+                  ? 'cursor-not-allowed opacity-50'
+                  : 'hover:border-[#D4C4EF] hover:bg-[#F8F6FC]'
+              "
+              :disabled="alreadyImportedNames.has(source.name)"
+              @click="onPickImport(source.id)"
+            >
+              <img
+                :src="CONNECTOR_ICONS[source.connector]"
+                alt=""
+                class="h-4 w-4 flex-shrink-0 object-contain"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[13px] font-medium text-[#25262E]">{{ source.name }}</span>
+                <span class="mt-0.5 block truncate text-[11px] text-[#9A9A9A]">
+                  {{ source.subtitle }}
+                  <template v-if="alreadyImportedNames.has(source.name)"> · already added</template>
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center justify-center rounded-lg px-3 py-2 text-[13px] font-medium text-[#3B1770] transition-colors hover:bg-[#F8F6FC]"
+              @click="startImportPick"
+            >
+              See all
             </button>
           </div>
 
