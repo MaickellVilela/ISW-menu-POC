@@ -118,6 +118,30 @@ export function assetFromImportable(id: string, source: ImportableSource): Works
   };
 }
 
+const MANUAL_SOURCE_NAME = 'Untitled data source';
+
+/** Unique name for a source created by hand in the classic builder. */
+export function buildManualSourceName(existingNames: string[]): string {
+  if (!existingNames.includes(MANUAL_SOURCE_NAME)) return MANUAL_SOURCE_NAME;
+  let suffix = 2;
+  while (existingNames.includes(`${MANUAL_SOURCE_NAME} ${suffix}`)) suffix += 1;
+  return `${MANUAL_SOURCE_NAME} ${suffix}`;
+}
+
+export function assetForManualCreate(id: string, name: string): WorkspaceAsset {
+  return {
+    id,
+    name,
+    kind: 'data-source',
+    subtitle: 'Not connected yet',
+    connector: null,
+    author: 'you',
+    modifiedAt: new Date().toISOString(),
+    tags: ['generated'],
+    origin: 'generated',
+  };
+}
+
 /** Wizard files are pdf or treated as images for this POC. */
 export function kindFromFileName(fileName: string): ContextAttachmentKind {
   return fileName.trim().toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
@@ -341,6 +365,17 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     return asset;
   }
 
+  /** Opens a blank source in the classic builder. Ignored while already editing. */
+  function createManualSource(): WorkspaceAsset | null {
+    if (viewMode.value === 'edit') return null;
+    const name = buildManualSourceName(assets.value.map((asset) => asset.name));
+    const asset = assetForManualCreate(nextAssetId(), name);
+    assets.value = [asset, ...assets.value];
+    openAssetId.value = asset.id;
+    viewMode.value = 'edit';
+    return asset;
+  }
+
   /** Copies a wizard upload into context attachments. */
   function addAttachmentFromFileName(fileName: string): ContextAttachment | null {
     const name = fileName.trim();
@@ -428,6 +463,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     saveEdits,
     endEditing,
     addFromSetup,
+    createManualSource,
     addAttachmentFromFileName,
     importFromCatalog,
     renameAsset,

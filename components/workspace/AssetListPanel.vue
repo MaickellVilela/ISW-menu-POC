@@ -359,19 +359,8 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-      <div v-if="visibleSources.length" class="mb-1.5 flex items-center gap-2 px-1">
-        <input
-          type="checkbox"
-          class="h-3.5 w-3.5 rounded border-[#C4C4C4] text-[#3B1770] focus:ring-[#3B1770]"
-          :checked="allVisibleSelected"
-          :aria-label="allVisibleSelected ? 'Deselect all' : 'Select all'"
-          @change="toggleSelectAllVisible"
-        />
-        <span class="text-[11px] text-[#9A9A9A]">Select all sources</span>
-      </div>
-
       <!-- Context attachments -->
-      <section class="mb-1 border-b border-[#E2E2E2] pb-1">
+      <section class="mb-3 border-b border-[#E2E2E2] pb-2.5">
         <div class="flex items-center gap-0.5">
           <button
             type="button"
@@ -445,6 +434,17 @@ onBeforeUnmount(() => {
           </p>
         </div>
       </section>
+
+      <div v-if="visibleSources.length" class="mb-1.5 mt-2.5 flex items-center gap-2 px-1">
+        <input
+          type="checkbox"
+          class="h-3.5 w-3.5 rounded border-[#C4C4C4] text-[#3B1770] focus:ring-[#3B1770]"
+          :checked="allVisibleSelected"
+          :aria-label="allVisibleSelected ? 'Deselect all' : 'Select all'"
+          @change="toggleSelectAllVisible"
+        />
+        <span class="text-[11px] text-[#9A9A9A]">Select all sources</span>
+      </div>
 
       <!-- Imported sources -->
       <section class="mb-1 border-b border-[#E2E2E2] pb-1">

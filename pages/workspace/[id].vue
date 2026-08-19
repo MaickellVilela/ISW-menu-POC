@@ -70,6 +70,7 @@ const {
   saveEdits,
   endEditing,
   addFromSetup,
+  createManualSource,
   importFromCatalog,
   renameAsset,
   deleteAssets,
@@ -80,7 +81,6 @@ const {
   seedDemoData: workspaceId.value !== 'new',
 });
 
-const chatPanelRef = ref<{ openWizard: () => void } | null>(null);
 const artifactsPanelRef = ref<{ openImport: () => void } | null>(null);
 const isArtifactsOpen = ref(artifactCount.value > 0);
 
@@ -103,7 +103,7 @@ async function onHeaderImport(): Promise<void> {
 }
 
 function onHeaderCreate(): void {
-  chatPanelRef.value?.openWizard();
+  createManualSource();
 }
 
 const importedSourceNames = computed(() =>
@@ -223,7 +223,7 @@ function onPublishArtifacts() {
           type="button"
           class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC] disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="isEditingSource"
-          :title="isEditingSource ? 'Save the source to create with the agent' : undefined"
+          :title="isEditingSource ? 'Save the source to create another' : undefined"
           @click="onHeaderCreate"
         >
           Create
@@ -269,7 +269,6 @@ function onPublishArtifacts() {
 
         <div class="min-h-0 flex-1">
           <SimbaChatPanel
-            ref="chatPanelRef"
             :has-sources="assets.length > 0"
             :imported-source-names="importedSourceNames"
             @created="onSourceCreated"
