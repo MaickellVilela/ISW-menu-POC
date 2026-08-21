@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 
 import MenuItem from './MenuItem.vue';
 import SimbaLogo from '~/assets/images/simba-logo.svg';
@@ -46,6 +46,7 @@ function openMenuAndFocusSearch() {
 
 watch(isCollapsed, (newValue) => {
     emit('update:collapsed', newValue);
+    closeAvatarMenu();
 });
 
 const menuItems = [
@@ -61,8 +62,70 @@ const menuItems = [
 const bottomMenuItems = [
     { name: 'Administration', icon: AdminIcon },
     { name: 'Help', icon: HelpIcon },
-    { name: 'John Doe', icon: AvatarIcon, isAvatar: true },
 ];
+
+const isAvatarMenuOpen = ref(false);
+const avatarButton = ref<HTMLButtonElement | null>(null);
+const avatarMenu = ref<HTMLElement | null>(null);
+const avatarMenuStyle = ref<Record<string, string>>({});
+
+function closeAvatarMenu() {
+  isAvatarMenuOpen.value = false;
+}
+
+function positionAvatarMenu() {
+  const rect = avatarButton.value?.getBoundingClientRect();
+  if (!rect) return;
+
+  if (isCollapsed.value) {
+    avatarMenuStyle.value = {
+      left: `${rect.right + 8}px`,
+      bottom: `${window.innerHeight - rect.bottom}px`,
+      width: '224px',
+    };
+    return;
+  }
+
+  avatarMenuStyle.value = {
+    left: `${rect.left + 12}px`,
+    bottom: `${window.innerHeight - rect.top + 6}px`,
+    width: `${Math.max(rect.width - 24, 200)}px`,
+  };
+}
+
+function toggleAvatarMenu() {
+  isAvatarMenuOpen.value = !isAvatarMenuOpen.value;
+  if (isAvatarMenuOpen.value) {
+    nextTick(positionAvatarMenu);
+  }
+}
+
+function onAvatarMenuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeAvatarMenu();
+    avatarButton.value?.focus();
+  }
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+  const target = event.target as Node | null;
+  if (!target) return;
+  if (avatarButton.value?.contains(target) || avatarMenu.value?.contains(target)) return;
+  closeAvatarMenu();
+}
+
+function openChangePasswordFlow() {
+  closeAvatarMenu();
+  navigateTo('/change-password');
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerDown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown);
+});
 
 </script>
 
@@ -157,6 +220,55 @@ const bottomMenuItems = [
             <ul>
                 <MenuItem v-for="item in bottomMenuItems" :key="item.name" :item="item" :is-collapsed="isCollapsed" />
             </ul>
+            <div class="relative">
+                <button
+                    ref="avatarButton"
+                    type="button"
+                    class="relative flex w-full items-center px-3 py-2 transition-colors hover:bg-[#1C1D22] focus:outline-none focus-visible:bg-[#1C1D22] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/40"
+                    :aria-expanded="isAvatarMenuOpen"
+                    aria-haspopup="menu"
+                    aria-controls="account-menu"
+                    aria-label="Account menu"
+                    @click="toggleAvatarMenu"
+                    @keydown="onAvatarMenuKeydown"
+                >
+                    <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center">
+                        <img :src="AvatarIcon" alt="" class="h-8 w-8 rounded-full" />
+                    </div>
+                    <span
+                        class="whitespace-nowrap transition-all duration-200"
+                        :class="[isCollapsed ? 'ml-0 w-0 opacity-0' : 'ml-4 w-auto opacity-100']"
+                    >
+                        John Doe
+                    </span>
+                </button>
+
+                <Teleport to="body">
+                    <div
+                        v-if="isAvatarMenuOpen"
+                        id="account-menu"
+                        ref="avatarMenu"
+                        role="menu"
+                        aria-label="Account"
+                        class="fixed z-50 overflow-hidden rounded-md border border-[#E2E2E2] bg-white py-1 shadow-lg"
+                        :style="avatarMenuStyle"
+                        @keydown="onAvatarMenuKeydown"
+                    >
+                        <div class="border-b border-[#E2E2E2] px-3 py-2">
+                            <p class="text-sm font-medium text-[#25262E]">John Doe</p>
+                            <p class="text-xs text-[#6B6B6B]">john.doe@simba.io</p>
+                        </div>
+                        <button
+                            type="button"
+                            role="menuitem"
+                            class="block w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F8F6FC] focus:bg-[#F8F6FC] focus:outline-none"
+                            @click="openChangePasswordFlow"
+                        >
+                            Change password flow
+                        </button>
+                    </div>
+                </Teleport>
+            </div>
         </div>
     </aside>
 </template>
