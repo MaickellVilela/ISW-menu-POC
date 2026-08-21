@@ -23,7 +23,7 @@ function onSubmit() {
     />
 
     <div class="relative z-10 w-full max-w-[560px] rounded-xl border border-[#E2E2E2] bg-white px-10 py-9 shadow-xl">
-      <img :src="SimbaLogo" alt="Simba" class="mb-6 h-9 w-auto" />
+      <img :src="SimbaLogo" alt="Simba" class="mx-auto mb-6 h-9 w-auto" />
 
       <div
         v-if="justChangedPassword"

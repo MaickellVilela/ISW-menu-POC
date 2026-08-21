@@ -95,7 +95,7 @@ const strengthLabelClass = computed(() => {
       aria-describedby="change-password-reason"
       @submit.prevent="onSubmit"
     >
-      <img :src="SimbaLogo" alt="Simba" class="mb-6 h-9 w-auto self-start" />
+      <img :src="SimbaLogo" alt="Simba" class="mx-auto mb-6 h-9 w-auto" />
 
       <h1 id="change-password-title" class="text-2xl font-semibold tracking-tight text-[#25262E]">
         Create a new password
