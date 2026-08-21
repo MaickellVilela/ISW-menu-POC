@@ -1,14 +1,134 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { CONNECTOR_ICONS, type ConnectorKey } from '~/composables/connectorIcons';
+import { CONNECTOR_ICONS, connectorIcon, type ConnectorKey } from '~/composables/connectorIcons';
 import { editorExitLabel, type SourceViewMode } from '~/composables/useWorkspaceAssets';
+
+interface PreviewSource {
+  id: string;
+  name: string;
+  connector?: ConnectorKey | null;
+  subtitle?: string;
+}
+
+interface PreviewEntityNode {
+  id: string;
+  label: string;
+  connector: ConnectorKey;
+  top: number;
+}
+
+interface PreviewCanvasModel {
+  entities: PreviewEntityNode[];
+  outputTop: number;
+  paths: string[];
+}
+
+const PREVIEW_TABLES_BY_NAME: Record<string, string[]> = {
+  'Order Item Transaction Detail': ['order_items', 'orders'],
+  'Campaign Cost Summary': ['campaigns', 'campaign_cost', 'cost_center'],
+  'Claim Nulls': ['claim_nulls'],
+  'Store Network Geo': ['stores', 'geo_regions'],
+  'Campaign Cost': ['campaigns', 'ad_costs', 'channels'],
+  'Customer Churn Scores': ['churn_scores'],
+};
+
+const ENTITY_RIGHT_X = 24;
+const BUS_X = 54.4;
+const OUTPUT_X = 83;
+
+/** Reads "N table(s)" from a source subtitle; unknown counts preview as one entity. */
+function tableCountFromSubtitle(subtitle: string | undefined): number {
+  if (!subtitle) return 1;
+  const match = subtitle.match(/(\d+)\s+tables?/i);
+  if (!match) return 1;
+  const count = Number(match[1]);
+  if (!Number.isFinite(count) || count < 1) return 1;
+  return Math.min(count, 4);
+}
+
+function slugifyEntityLabel(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return slug || 'entity';
+}
+
+/** Table names shown on the mock canvas for a source. */
+function entityLabelsForSource(name: string, count: number): string[] {
+  const known = PREVIEW_TABLES_BY_NAME[name];
+  if (known?.length) return known;
+
+  const base = slugifyEntityLabel(name);
+  if (count <= 1) return [base];
+
+  const suffixes = ['', '_dim', '_fact', '_map'];
+  return Array.from({ length: count }, (_, index) =>
+    index === 0 ? base : `${base}${suffixes[index] ?? `_${index + 1}`}`,
+  );
+}
+
+function previewConnectorForSource(connector: ConnectorKey | null | undefined): ConnectorKey {
+  return connector ?? 'postgresql';
+}
+
+function previewEntityTops(count: number): number[] {
+  if (count <= 1) return [29.4];
+  if (count === 2) return [24, 58];
+  if (count === 3) return [20, 42, 64];
+  return [16, 34, 52, 70];
+}
+
+function previewOutputTop(tops: number[]): number {
+  if (tops.length <= 1) return 71.7;
+  return (tops[0] + tops[tops.length - 1]) / 2;
+}
+
+function previewPathsForTops(tops: number[], outputTop: number): string[] {
+  if (!tops.length) return [];
+  if (tops.length === 1) {
+    const top = tops[0];
+    return [`${ENTITY_RIGHT_X},${top} ${BUS_X},${top} ${BUS_X},${outputTop} ${OUTPUT_X},${outputTop}`];
+  }
+
+  const horizontals = tops.map((top) => `${ENTITY_RIGHT_X},${top} ${BUS_X},${top}`);
+  const bus = `${BUS_X},${Math.min(...tops)} ${BUS_X},${Math.max(...tops)}`;
+  const toOutput = `${BUS_X},${outputTop} ${OUTPUT_X},${outputTop}`;
+  return [...horizontals, bus, toOutput];
+}
+
+/** POC canvas graph so switching sources visibly changes the preview. */
+function buildPreviewCanvas(source: PreviewSource | null): PreviewCanvasModel {
+  const name = source?.name.trim() || 'entity';
+  const connector = previewConnectorForSource(source?.connector);
+  const labels = entityLabelsForSource(name, tableCountFromSubtitle(source?.subtitle));
+  const tops = previewEntityTops(labels.length);
+  const entities = labels.map((label, index) => ({
+    id: `${source?.id ?? 'preview'}-${index}`,
+    label,
+    connector,
+    top: tops[index] ?? 29.4,
+  }));
+  const outputTop = previewOutputTop(entities.map((entity) => entity.top));
+  return {
+    entities,
+    outputTop,
+    paths: previewPathsForTops(
+      entities.map((entity) => entity.top),
+      outputTop,
+    ),
+  };
+}
 
 const props = withDefaults(
   defineProps<{
     mode?: SourceViewMode;
     updating?: boolean;
+    sources?: PreviewSource[];
+    selectedSourceId?: string | null;
   }>(),
-  { mode: 'preview', updating: false },
+  { mode: 'preview', updating: false, sources: () => [], selectedSourceId: null },
 );
 
 const emit = defineEmits<{
@@ -16,9 +136,16 @@ const emit = defineEmits<{
   edit: [];
   save: [];
   end: [];
+  select: [id: string];
 }>();
 
 const isPreview = computed(() => props.mode === 'preview');
+
+const selectedSource = computed(
+  () => props.sources.find((source) => source.id === props.selectedSourceId) ?? null,
+);
+
+const previewCanvas = computed(() => buildPreviewCanvas(selectedSource.value));
 
 /**
  * Visual simulation of the legacy (Classic Builder) data source screen.
@@ -134,6 +261,13 @@ function onSave(): void {
 function onEndEditing(): void {
   emit('end');
 }
+
+function onSelectSource(event: Event): void {
+  const target = event.target as HTMLSelectElement;
+  const id = target.value;
+  if (!id || id === props.selectedSourceId) return;
+  emit('select', id);
+}
 </script>
 
 <template>
@@ -167,10 +301,24 @@ function onEndEditing(): void {
     </p>
 
     <!-- Toolbar -->
-    <div class="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#E2E2E2] bg-white px-3 py-2">
+    <div class="flex h-12 flex-shrink-0 items-center justify-between gap-4 border-b border-[#E2E2E2] bg-white px-4">
       <div class="flex min-w-0 items-center gap-6">
         <template v-if="isPreview">
-          <span class="rounded bg-[#F1ECFA] px-2 py-0.5 text-[11px] font-medium text-[#3B1770]">Preview</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="flex-shrink-0 text-sm font-medium text-[#25262E]">Preview</span>
+            <label class="sr-only" for="preview-source">Data source</label>
+            <select
+              id="preview-source"
+              class="h-8 min-w-[10rem] max-w-[18rem] rounded-md border border-[#E2E2E2] bg-white px-2 text-[12px] text-[#25262E] outline-none focus:border-[#3B1770]"
+              :value="selectedSourceId ?? ''"
+              :disabled="sources.length < 2"
+              @change="onSelectSource"
+            >
+              <option v-for="source in sources" :key="source.id" :value="source.id">
+                {{ source.name }}
+              </option>
+            </select>
+          </div>
         </template>
         <template v-else>
           <button
@@ -290,7 +438,7 @@ function onEndEditing(): void {
             </button>
           </div>
 
-          <!-- Connector: entity -> output -->
+          <!-- Connector: entities -> output -->
           <svg
             class="pointer-events-none absolute inset-0 h-full w-full"
             viewBox="0 0 100 100"
@@ -298,7 +446,9 @@ function onEndEditing(): void {
             aria-hidden="true"
           >
             <polyline
-              points="24,29.4 54.4,29.4 54.4,71.7 83,71.7"
+              v-for="(path, index) in previewCanvas.paths"
+              :key="index"
+              :points="path"
               fill="none"
               stroke="#C4C4C4"
               stroke-width="1"
@@ -307,20 +457,26 @@ function onEndEditing(): void {
           </svg>
           <svg
             class="pointer-events-none absolute h-2.5 w-2.5 -translate-y-1/2 text-[#C4C4C4]"
-            style="left: 82.5%; top: 71.7%"
+            :style="{ left: '82.5%', top: `${previewCanvas.outputTop}%` }"
             viewBox="0 0 10 10"
             aria-hidden="true"
           >
             <path d="M0 1.5 6 5 0 8.5Z" fill="currentColor" />
           </svg>
 
-          <!-- Entity node -->
+          <!-- Entity nodes -->
           <div
+            v-for="entity in previewCanvas.entities"
+            :key="entity.id"
             class="absolute flex h-7 items-center gap-2 rounded border border-[#D8D8D8] bg-white px-2 shadow-sm"
-            style="left: 5.2%; top: 29.4%; width: 18.8%; transform: translateY(-50%)"
+            :style="{ left: '5.2%', top: `${entity.top}%`, width: '18.8%', transform: 'translateY(-50%)' }"
           >
-            <img :src="CONNECTOR_ICONS.python" alt="" class="h-3.5 w-3.5 flex-shrink-0 object-contain" />
-            <span class="min-w-0 flex-1 truncate text-[11px] text-[#25262E]">campaign_factor_…</span>
+            <img
+              :src="connectorIcon(entity.connector) ?? CONNECTOR_ICONS.postgresql"
+              alt=""
+              class="h-3.5 w-3.5 flex-shrink-0 object-contain"
+            />
+            <span class="min-w-0 flex-1 truncate text-[11px] text-[#25262E]">{{ entity.label }}</span>
             <button
               v-if="!isPreview"
               type="button"
@@ -337,7 +493,7 @@ function onEndEditing(): void {
           <!-- Output node -->
           <div
             class="absolute flex h-7 items-center gap-1.5 rounded border border-[#D8D8D8] bg-white px-2 shadow-sm"
-            style="left: 84.5%; top: 71.7%; transform: translateY(-50%)"
+            :style="{ left: '84.5%', top: `${previewCanvas.outputTop}%`, transform: 'translateY(-50%)' }"
           >
             <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 flex-shrink-0 text-[#3B1770]" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="4" y="4" width="16" height="16" rx="2" />

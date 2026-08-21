@@ -210,6 +210,32 @@ export function hasSelectedSources(selectedIds: string[], assets: WorkspaceAsset
   return selectedIds.some((id) => sourceIds.has(id));
 }
 
+/** Returns the last previewed id only when that asset is still in the workspace. */
+export function resolvedLastPreviewedId(
+  lastId: string | null,
+  assets: WorkspaceAsset[],
+): string | null {
+  if (!lastId) return null;
+  return assets.some((asset) => asset.id === lastId) ? lastId : null;
+}
+
+/** Closing preview remembers the open source; a no-op close keeps the previous id. */
+export function lastPreviewedIdAfterClose(
+  openAssetId: string | null,
+  previousLastId: string | null,
+): string | null {
+  return openAssetId ?? previousLastId;
+}
+
+/** Drops the remembered preview when that source was deleted. */
+export function lastPreviewedIdAfterDelete(
+  lastId: string | null,
+  deletedIds: string[],
+): string | null {
+  if (!lastId) return null;
+  return deletedIds.includes(lastId) ? null : lastId;
+}
+
 /** Demo inventory catalog — sources that already exist outside the workspace. */
 export const IMPORTABLE_SOURCES: ImportableSource[] = [
   {
@@ -300,12 +326,21 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   const openAssetId = ref<string | null>(null);
   const selectedIds = ref<string[]>([]);
   const viewMode = ref<SourceViewMode | null>(null);
+  const lastPreviewedAssetId = ref<string | null>(null);
 
   const isEditorOpen = computed(() => openAssetId.value !== null);
   const isEditingSource = computed(() => viewMode.value === 'edit');
   const sourceViewMode = computed<SourceViewMode>(() => viewMode.value ?? 'preview');
   const openAsset = computed(
     () => assets.value.find((asset) => asset.id === openAssetId.value) ?? null,
+  );
+  const lastPreviewedAsset = computed(() => {
+    const id = resolvedLastPreviewedId(lastPreviewedAssetId.value, assets.value);
+    if (!id) return null;
+    return assets.value.find((asset) => asset.id === id) ?? null;
+  });
+  const canRestoreLastPreview = computed(
+    () => !isEditorOpen.value && lastPreviewedAsset.value !== null,
   );
   const artifactCount = computed(() => assets.value.length + attachments.value.length);
   const canPublish = computed(() => hasSelectedSources(selectedIds.value, assets.value));
@@ -319,8 +354,24 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   }
 
   function closeEditor(): void {
+    lastPreviewedAssetId.value = lastPreviewedIdAfterClose(
+      openAssetId.value,
+      lastPreviewedAssetId.value,
+    );
     openAssetId.value = null;
     viewMode.value = null;
+  }
+
+  /** Reopens the last closed preview. No-op while editing or if that source is gone. */
+  function restoreLastPreview(): boolean {
+    const id = resolvedLastPreviewedId(lastPreviewedAssetId.value, assets.value);
+    if (!id) {
+      lastPreviewedAssetId.value = null;
+      return false;
+    }
+    if (viewMode.value === 'edit') return false;
+    openEditor(id);
+    return true;
   }
 
   function startEdit(): void {
@@ -427,6 +478,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
       openAssetId.value = null;
       viewMode.value = null;
     }
+    lastPreviewedAssetId.value = lastPreviewedIdAfterDelete(
+      lastPreviewedAssetId.value,
+      ids,
+    );
   }
 
   function removeAttachment(id: string): void {
@@ -456,9 +511,12 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     canPublish,
     isEditorOpen,
     isEditingSource,
+    lastPreviewedAsset,
+    canRestoreLastPreview,
     sourceViewMode,
     openEditor,
     closeEditor,
+    restoreLastPreview,
     startEdit,
     saveEdits,
     endEditing,
