@@ -221,10 +221,10 @@ function onPublishArtifacts() {
           type="button"
           class="h-8 rounded-md border border-[#E2E2E2] bg-white px-3 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F8F6FC] disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="isEditingSource"
-          :title="isEditingSource ? 'Save the source to create another' : undefined"
+          :title="isEditingSource ? 'Save the source to create another' : 'Create a data source yourself, without using the agent.'"
           @click="onHeaderCreate"
         >
-          Create
+          Create Data Source
         </button>
         <button
           type="button"
