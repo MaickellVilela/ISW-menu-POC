@@ -84,11 +84,7 @@ const {
 });
 
 const artifactsPanelRef = ref<{ openImport: () => void } | null>(null);
-const isArtifactsOpen = ref(artifactCount.value > 0);
-
-watch(artifactCount, (count, previous) => {
-  if (count > (previous ?? 0)) isArtifactsOpen.value = true;
-});
+const isArtifactsOpen = ref(false);
 
 function toggleArtifacts(): void {
   isArtifactsOpen.value = !isArtifactsOpen.value;

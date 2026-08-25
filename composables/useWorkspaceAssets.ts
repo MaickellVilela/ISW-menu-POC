@@ -440,7 +440,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     return attachment;
   }
 
-  /** Copies an inventory source into the workspace artifacts list. */
+  /** Copies an inventory source into the workspace and opens it in preview. */
   function importFromCatalog(sourceId: string): WorkspaceAsset | null {
     const source = IMPORTABLE_SOURCES.find((item) => item.id === sourceId);
     if (!source) return null;
@@ -450,6 +450,8 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
 
     const asset = assetFromImportable(nextAssetId(), source);
     assets.value = [asset, ...assets.value];
+    openAssetId.value = asset.id;
+    viewMode.value = 'preview';
     return asset;
   }
 
