@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
-import { useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
+import PublishConfirmDialog from '~/components/workspace/PublishConfirmDialog.vue';
+import { useLiveCatalog, useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
+import { selectedPublishableAssets, type PublishNameDraft } from '~/composables/usePublish';
 import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
 
 const route = useRoute();
@@ -79,12 +81,40 @@ const {
   removeAttachment,
   setSelectedIds,
   artifactCount,
+  publishDrafts,
 } = useWorkspaceAssets({
   seedDemoData: workspaceId.value !== 'new',
 });
 
+const { names: publishedNames } = useLiveCatalog();
+
 const artifactsPanelRef = ref<{ openImport: () => void } | null>(null);
 const isArtifactsOpen = ref(false);
+const isPublishOpen = ref(false);
+const publishToast = ref<string[] | null>(null);
+
+const TOAST_MS = 4000;
+let publishToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function hidePublishToast(): void {
+  if (publishToastTimer !== null) clearTimeout(publishToastTimer);
+  publishToastTimer = null;
+  publishToast.value = null;
+}
+
+function publishToastLines(names: string[]): string[] {
+  return names.map((name) => `${name} published to Data Sources`);
+}
+
+function showPublishToast(names: string[]): void {
+  hidePublishToast();
+  publishToast.value = publishToastLines(names);
+  publishToastTimer = setTimeout(hidePublishToast, TOAST_MS);
+}
+
+const publishSources = computed(() =>
+  selectedPublishableAssets(selectedIds.value, assets.value),
+);
 
 function toggleArtifacts(): void {
   isArtifactsOpen.value = !isArtifactsOpen.value;
@@ -145,7 +175,10 @@ watch(isEditorOpen, (open) => {
   if (!open) stopPreviewUpdate();
 });
 
-onBeforeUnmount(stopPreviewUpdate);
+onBeforeUnmount(() => {
+  stopPreviewUpdate();
+  hidePublishToast();
+});
 
 function onRenameAsset(payload: { id: string; name: string }) {
   renameAsset(payload.id, payload.name);
@@ -160,7 +193,20 @@ function onRemoveAttachment(id: string) {
 }
 
 function onPublishArtifacts() {
-  // POC: selection-driven publish; wire to API later.
+  if (!canPublish.value) return;
+  isPublishOpen.value = true;
+}
+
+function onConfirmPublish(drafts: PublishNameDraft[]) {
+  publishDrafts(drafts);
+  setSelectedIds([]);
+  isPublishOpen.value = false;
+  hideArtifacts();
+  showPublishToast(drafts.map((draft) => draft.name));
+}
+
+function onClosePublish() {
+  isPublishOpen.value = false;
 }
 </script>
 
@@ -326,5 +372,48 @@ function onPublishArtifacts() {
         />
       </aside>
     </div>
+
+    <PublishConfirmDialog
+      :open="isPublishOpen"
+      :sources="publishSources"
+      :published-names="publishedNames"
+      @confirm="onConfirmPublish"
+      @cancel="onClosePublish"
+    />
+
+    <Teleport to="body">
+      <div
+        v-if="publishToast"
+        class="fixed right-4 top-4 z-[60] flex w-[min(26rem,calc(100vw-2rem))] gap-3 rounded-xl border border-[#BBF7D0] bg-[#E8F6EF] px-4 py-4 shadow-lg"
+        :class="publishToast.length === 1 ? 'items-center' : 'items-start'"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#166534] text-white" aria-hidden="true">
+          <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none">
+            <path d="M3.5 8.2l3 3 6-6.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <div class="min-w-0 flex-1 space-y-1">
+          <p
+            v-for="line in publishToast"
+            :key="line"
+            class="text-[15px] font-medium leading-5 text-[#166534]"
+          >
+            {{ line }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[#166534] transition-colors hover:bg-[#166534]/10"
+          aria-label="Dismiss notification"
+          @click="hidePublishToast"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>

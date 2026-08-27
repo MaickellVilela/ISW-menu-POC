@@ -1,6 +1,7 @@
 import { computed, ref, type Ref } from 'vue';
 import type { DataSourceSetup } from '~/composables/useDataSourceFlow';
 import { connectorKeyForType, type ConnectorKey } from '~/composables/connectorIcons';
+import { importableFromWorkspaceAsset } from '~/composables/usePublish';
 
 /** Data sources today; visuals and dashboards land in the same list later. */
 export type AssetKind = 'data-source' | 'visual' | 'dashboard';
@@ -276,6 +277,27 @@ export const IMPORTABLE_SOURCES: ImportableSource[] = [
   },
 ];
 
+/** Live Data Sources inventory. Publishing appends independent copies here. */
+const liveCatalog = ref<ImportableSource[]>(
+  IMPORTABLE_SOURCES.map((source) => ({ ...source, tags: [...source.tags] })),
+);
+
+let publishedCopySeq = 0;
+
+export function liveCatalogSources(): ImportableSource[] {
+  return liveCatalog.value;
+}
+
+export function findImportableSource(sourceId: string): ImportableSource | undefined {
+  return liveCatalog.value.find((source) => source.id === sourceId);
+}
+
+export function useLiveCatalog() {
+  const catalog = computed(() => liveCatalog.value);
+  const names = computed(() => liveCatalog.value.map((source) => source.name));
+  return { catalog, names };
+}
+
 /** Demo seed so the list and the editor are reachable before creating anything. */
 const SEEDED_ASSETS: WorkspaceAsset[] = [
   {
@@ -442,7 +464,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
 
   /** Copies an inventory source into the workspace and opens it in preview. */
   function importFromCatalog(sourceId: string): WorkspaceAsset | null {
-    const source = IMPORTABLE_SOURCES.find((item) => item.id === sourceId);
+    const source = findImportableSource(sourceId);
     if (!source) return null;
     if (assets.value.some((asset) => asset.name === source.name && asset.origin === 'imported')) {
       return null;
@@ -503,6 +525,26 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     selectedIds.value = [...selectedIds.value, id];
   }
 
+  /** Copies selected sources into Data Sources as independent inventory items. */
+  function publishDrafts(drafts: { assetId: string; name: string }[]): ImportableSource[] {
+    const byId = new Map(assets.value.map((asset) => [asset.id, asset]));
+    const created: ImportableSource[] = [];
+
+    for (const draft of drafts) {
+      const asset = byId.get(draft.assetId);
+      if (!asset) continue;
+      publishedCopySeq += 1;
+      created.push(
+        importableFromWorkspaceAsset(asset, draft.name, `pub-${publishedCopySeq}`),
+      );
+    }
+
+    if (created.length) {
+      liveCatalog.value = [...created, ...liveCatalog.value];
+    }
+    return created;
+  }
+
   return {
     assets,
     attachments,
@@ -531,5 +573,6 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     removeAttachment,
     setSelectedIds,
     toggleSelected,
+    publishDrafts,
   };
 }

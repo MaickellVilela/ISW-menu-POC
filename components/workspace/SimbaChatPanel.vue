@@ -10,7 +10,7 @@ import {
   type DataSourceSetup,
   type FlowItem,
 } from '~/composables/useDataSourceFlow';
-import { IMPORTABLE_SOURCES, formatAssetModifiedAt } from '~/composables/useWorkspaceAssets';
+import { useLiveCatalog, formatAssetModifiedAt } from '~/composables/useWorkspaceAssets';
 import CreateDataSourceModal from '~/components/workspace/CreateDataSourceModal.vue';
 import HistoryDisclosure from '~/components/workspace/HistoryDisclosure.vue';
 import AgentThinkingPanel from '~/components/workspace/AgentThinkingPanel.vue';
@@ -51,12 +51,14 @@ const {
 
 const alreadyImportedNames = computed(() => new Set(props.importedSourceNames));
 
+const { catalog: importableCatalog } = useLiveCatalog();
+
 const showEntryActions = computed(() =>
   shouldShowAgentEntry(props.hasSources, items.value.length),
 );
 
 const isPickingImport = ref(false);
-const recentImportableSources = computed(() => IMPORTABLE_SOURCES.slice(0, 3));
+const recentImportableSources = computed(() => importableCatalog.value.slice(0, 3));
 
 function startImportPick(): void {
   isPickingImport.value = true;
@@ -72,7 +74,7 @@ function onCreateSource(): void {
 }
 
 function onPickImport(sourceId: string): void {
-  const source = IMPORTABLE_SOURCES.find((item) => item.id === sourceId);
+  const source = importableCatalog.value.find((item) => item.id === sourceId);
   if (!source || alreadyImportedNames.value.has(source.name)) return;
   emit('import', sourceId);
   acknowledgeImport(source.name);
@@ -149,28 +151,41 @@ defineExpose({ openWizard });
     <div v-if="showEntryActions" class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-6">
       <div class="w-full max-w-xl">
         <template v-if="!isPickingImport">
-          <p class="mb-1 text-center text-base font-semibold text-[#25262E]">Ask the agent about your data</p>
-          <p class="mb-4 text-center text-xs text-[#9A9A9A]">
-            Ask questions, iterate in preview, or open Edit when you want to change a source yourself.
-          </p>
+          <p class="mb-3 text-base font-semibold text-[#25262E]">Ask the agent about your data</p>
+          <ul class="mb-5 space-y-2 text-sm leading-snug text-[#6B6B6B]">
+            <li class="flex items-start gap-2.5">
+              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" aria-hidden="true" />
+              <span><span class="font-medium text-[#25262E]">Ask</span> questions in plain language</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" aria-hidden="true" />
+              <span><span class="font-medium text-[#25262E]">Preview</span> the data, then iterate until it looks right</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" aria-hidden="true" />
+              <span><span class="font-medium text-[#25262E]">Edit</span> a source yourself when you want more control</span>
+            </li>
+          </ul>
 
           <button
             type="button"
-            class="mx-auto flex w-full max-w-[16rem] flex-col items-start rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
+            class="flex w-full items-start gap-3 rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
             @click="onCreateSource"
           >
-            <span class="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
+            <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
               <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M12 5v14M5 12h14" stroke-linecap="round" />
               </svg>
             </span>
-            <span class="text-sm font-semibold text-[#25262E]">Create a data source</span>
-            <span class="mt-1 text-xs leading-relaxed text-[#9A9A9A]">
-              Open the wizard to describe a use case, pick a connection, and choose tables.
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold text-[#25262E]">Create a data source</span>
+              <span class="mt-1 block text-xs leading-relaxed text-[#9A9A9A]">
+                Open the wizard to describe a use case, pick a connection, and choose tables.
+              </span>
             </span>
           </button>
 
-          <p class="mb-2 mt-5 text-center text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">
+          <p class="mb-2 mt-5 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">
             Import from inventory
           </p>
           <div class="space-y-1">
@@ -227,7 +242,7 @@ defineExpose({ openWizard });
           </p>
           <div class="space-y-1">
             <button
-              v-for="source in IMPORTABLE_SOURCES"
+              v-for="source in importableCatalog"
               :key="source.id"
               type="button"
               class="flex w-full items-start gap-2 rounded-lg border border-[#E2E2E2] px-3 py-2 text-left transition-colors"

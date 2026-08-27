@@ -3,11 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
 import {
   ARTIFACT_SECTION_HELP,
-  IMPORTABLE_SOURCES,
   filterAssetsByQuery,
   formatAssetModifiedAt,
   partitionSourceAssets,
   sortAssets,
+  useLiveCatalog,
   type ArtifactSectionId,
   type AssetSortKey,
   type ContextAttachment,
@@ -92,6 +92,8 @@ const alreadyImportedNames = computed(
       props.assets.filter((asset) => asset.origin === 'imported').map((asset) => asset.name),
     ),
 );
+
+const { catalog: importableCatalog } = useLiveCatalog();
 
 const hasAnyVisible = computed(
   () =>
@@ -836,7 +838,7 @@ onBeforeUnmount(() => {
 
       <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         <button
-          v-for="source in IMPORTABLE_SOURCES"
+          v-for="source in importableCatalog"
           :key="source.id"
           type="button"
           class="mb-1.5 flex w-full items-start gap-2 rounded-md border border-[#E2E2E2] px-2 py-2 text-left transition-colors"
