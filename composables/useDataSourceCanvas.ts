@@ -95,7 +95,7 @@ export const JOIN_TYPE_LABELS: Record<JoinType, string> = {
   full: 'Full Outer',
 };
 
-const STORAGE_KEY = 'datasource-canvas-layout-v2';
+export const CANVAS_LAYOUT_STORAGE_KEY = 'datasource-canvas-layout-v2';
 const OUTPUT_NODE_ID = 'output-root';
 
 /* -------------------------------------------------------------------------- */
@@ -434,6 +434,20 @@ export function collectSourceFields(nodes: CanvasNode[], id: string | undefined)
   return fields;
 }
 
+/**
+ * Fields that represent the data source output.
+ * Prefers the graph wired into Output; otherwise every table currently on the canvas.
+ */
+export function fieldsFromCanvasNodes(nodes: CanvasNode[]): FieldOption[] {
+  const output = nodes.find(isOutputNode);
+  const outputSourceId = output?.inputs?.[0];
+  if (outputSourceId) return collectSourceFields(nodes, outputSourceId);
+
+  return nodes
+    .filter((node) => node.type === 'table')
+    .flatMap((node) => collectSourceFields(nodes, node.id));
+}
+
 /** All field values currently referenced by any join condition (e.g. "Locations.id"). */
 export function usedFieldValues(nodes: CanvasNode[]): Set<string> {
   const used = new Set<string>();
@@ -557,7 +571,7 @@ export function cloneNodes(nodes: CanvasNode[]): CanvasNode[] {
   return JSON.parse(JSON.stringify(nodes)) as CanvasNode[];
 }
 
-function parseStoredNodes(raw: string | null): CanvasNode[] {
+export function parseCanvasNodes(raw: string | null): CanvasNode[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -587,14 +601,14 @@ export function useDataSourceCanvas() {
 
   function loadFromStorage(): void {
     if (typeof window === 'undefined') return;
-    const stored = parseStoredNodes(window.localStorage.getItem(STORAGE_KEY));
+    const stored = parseCanvasNodes(window.localStorage.getItem(CANVAS_LAYOUT_STORAGE_KEY));
     if (stored.length) nodes.value = stored;
     ensureOutput();
   }
 
   function saveToStorage(): void {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes.value));
+    window.localStorage.setItem(CANVAS_LAYOUT_STORAGE_KEY, JSON.stringify(nodes.value));
   }
 
   /* ----------------------------- undo / redo ----------------------------- */

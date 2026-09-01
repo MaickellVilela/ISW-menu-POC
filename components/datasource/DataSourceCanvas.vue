@@ -378,11 +378,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="relative flex h-full w-full flex-col">
     <!-- Toolbar -->
-    <div class="z-20 flex flex-shrink-0 items-center justify-between border-b border-[#E2E2E2] bg-white px-4 py-2">
-      <div class="flex items-center gap-4">
-        <span class="text-sm font-medium text-[#25262E]">Data Source Creation</span>
-      </div>
-
+    <div class="z-20 flex flex-shrink-0 items-center justify-end border-b border-[#E2E2E2] bg-white px-4 py-2">
       <div class="flex items-center gap-2">
         <div class="flex items-center rounded-md border border-[#E2E2E2] text-xs">
           <button

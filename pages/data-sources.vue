@@ -1,22 +1,43 @@
 <template>
-  <div class="flex h-full overflow-hidden">
-    <section
-      class="w-[80%] bg-white border-r border-[#D8D8D8]"
-      aria-label="Canvas"
-    >
-      <DataSourceCanvas />
-    </section>
+  <div class="flex h-full flex-col overflow-hidden">
+    <DataSourceWorkspaceHeader
+      :section="section"
+      @update:section="section = $event"
+    />
 
-    <aside
-      class="w-[20%] bg-white"
-      aria-label="Details sidebar"
+    <div
+      v-show="section === 'canvas'"
+      class="flex min-h-0 flex-1 overflow-hidden"
     >
-      <SourcePanel />
-    </aside>
+      <section
+        class="w-[80%] border-r border-[#D8D8D8] bg-white"
+        aria-label="Canvas"
+      >
+        <DataSourceCanvas />
+      </section>
+
+      <aside
+        class="w-[20%] bg-white"
+        aria-label="Details sidebar"
+      >
+        <SourcePanel />
+      </aside>
+    </div>
+
+    <CacheConfigPanel
+      v-if="section === 'cache'"
+      class="min-h-0 flex-1"
+      @go-to-canvas="section = 'canvas'"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+import CacheConfigPanel from '~/components/datasource/CacheConfigPanel.vue';
 import DataSourceCanvas from '~/components/datasource/DataSourceCanvas.vue';
+import DataSourceWorkspaceHeader from '~/components/datasource/DataSourceWorkspaceHeader.vue';
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
+
+const section = ref<'canvas' | 'cache'>('canvas');
 </script>
