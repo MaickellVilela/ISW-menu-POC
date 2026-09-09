@@ -151,8 +151,9 @@ defineExpose({ openWizard });
     <div v-if="showEntryActions" class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-6">
       <div class="w-full max-w-xl">
         <template v-if="!isPickingImport">
-          <p class="mb-3 text-base font-semibold text-[#25262E]">Ask the agent about your data</p>
-          <ul class="mb-5 space-y-2 text-sm leading-snug text-[#6B6B6B]">
+          <div class="mx-auto mb-5 w-fit text-left">
+            <p class="mb-3 text-base font-semibold text-[#25262E]">Ask the agent about your data</p>
+            <ul class="space-y-2 text-sm leading-snug text-[#6B6B6B]">
             <li class="flex items-start gap-2.5">
               <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" aria-hidden="true" />
               <span><span class="font-medium text-[#25262E]">Ask</span> questions in plain language</span>
@@ -166,25 +167,48 @@ defineExpose({ openWizard });
               <span><span class="font-medium text-[#25262E]">Edit</span> a source yourself when you want more control</span>
             </li>
           </ul>
+          </div>
 
-          <button
-            type="button"
-            class="flex w-full items-start gap-3 rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
-            @click="onCreateSource"
-          >
-            <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
-              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" stroke-linecap="round" />
-              </svg>
-            </span>
-            <span class="min-w-0">
-              <span class="block text-sm font-semibold text-[#25262E]">Create a data source</span>
-              <span class="mt-1 block text-xs leading-relaxed text-[#9A9A9A]">
-                Open the wizard to describe a use case, pick a connection, and choose tables.
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              class="flex h-full items-start gap-3 rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
+              @click="onCreateSource"
+            >
+              <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+                </svg>
               </span>
-            </span>
-          </button>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-[#25262E]">Create a data source</span>
+                <span class="mt-1 block text-xs leading-relaxed text-[#9A9A9A]">
+                  Open the wizard to describe a use case, pick a connection, and choose tables.
+                </span>
+              </span>
+            </button>
 
+            <button
+              type="button"
+              class="flex h-full items-start gap-3 rounded-xl border border-[#E2E2E2] bg-white p-4 text-left transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC]"
+              @click="startImportPick"
+            >
+              <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#F1ECFA] text-[#3B1770]">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 3v12M8 11l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M4 21h16" stroke-linecap="round" />
+                </svg>
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-[#25262E]">Import a source</span>
+                <span class="mt-1 block text-xs leading-relaxed text-[#9A9A9A]">
+                  Choose an existing data source from inventory to add to this workspace.
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <!-- Temporary: inventory list hidden to preview the side-by-side import card.
           <p class="mb-2 mt-5 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">
             Import from inventory
           </p>
@@ -223,6 +247,7 @@ defineExpose({ openWizard });
               See all
             </button>
           </div>
+          -->
         </template>
 
         <template v-else>
