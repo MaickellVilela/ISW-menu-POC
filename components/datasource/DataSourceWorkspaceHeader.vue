@@ -29,7 +29,7 @@ function select(section: DataSourceSection): void {
       <div class="min-w-0">
         <p class="truncate text-sm font-semibold text-[#25262E]">{{ sourceName ?? 'Untitled data source' }}</p>
         <p class="text-[10px] text-[#9A9A9A]">
-          {{ section === 'canvas' ? 'Source canvas' : 'Source settings' }}
+          {{ section === 'canvas' ? 'Source canvas' : 'Configuration' }}
         </p>
       </div>
     </div>
@@ -46,7 +46,7 @@ function select(section: DataSourceSection): void {
         <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none" />
         <circle cx="9" cy="17" r="1.6" fill="currentColor" stroke="none" />
       </svg>
-      Settings
+      Configure
     </button>
 
     <button

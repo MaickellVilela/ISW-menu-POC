@@ -4,10 +4,14 @@ import {
   DATA_SOURCE_CONNECTIONS,
   DATA_SOURCE_FILES,
   createDataSourceFile,
+  entityCatalogSelectionId,
   entitiesForConnection,
+  fileCatalogSelectionId,
   type DataSourceConnection,
   type DataSourceFile,
+  type SourceCatalogSelection,
 } from '~/composables/dataSourceCatalog';
+import type { SourceItem } from '~/composables/useDataSourceCanvas';
 import ConnectionEntitiesPanel from './ConnectionEntitiesPanel.vue';
 import ConnectionList from './ConnectionList.vue';
 import SourceFilesPanel from './SourceFilesPanel.vue';
@@ -18,10 +22,14 @@ const props = withDefaults(
   defineProps<{
     connections?: DataSourceConnection[];
     initialFiles?: DataSourceFile[];
+    mode?: 'drag' | 'select';
+    selectedSourceId?: string;
   }>(),
   {
     connections: () => DATA_SOURCE_CONNECTIONS,
     initialFiles: () => DATA_SOURCE_FILES,
+    mode: 'drag',
+    selectedSourceId: '',
   },
 );
 
@@ -29,10 +37,25 @@ const emit = defineEmits<{
   'connection-selected': [connection: DataSourceConnection];
   'file-uploaded': [file: DataSourceFile];
   'file-removed': [id: string];
+  'source-selected': [selection: SourceCatalogSelection];
 }>();
 
-const activeTab = ref<SourcePanelTab>('connections');
-const selectedConnection = ref<DataSourceConnection | null>(null);
+function connectionIdFromSourceId(sourceId: string): string | null {
+  const match = sourceId.match(/^entity:([^:]+):/);
+  return match?.[1] ?? null;
+}
+
+function fileIdFromSourceId(sourceId: string): string {
+  return sourceId.startsWith('file:') ? sourceId.slice('file:'.length) : '';
+}
+
+const initialConnectionId = connectionIdFromSourceId(props.selectedSourceId);
+const activeTab = ref<SourcePanelTab>(
+  props.selectedSourceId.startsWith('file:') ? 'files' : 'connections',
+);
+const selectedConnection = ref<DataSourceConnection | null>(
+  props.connections.find((connection) => connection.id === initialConnectionId) ?? null,
+);
 const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
   ...file,
   sourceItem: {
@@ -44,6 +67,14 @@ const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
 const selectedEntities = computed(() =>
   selectedConnection.value ? entitiesForConnection(selectedConnection.value) : [],
 );
+const selectedEntityKey = computed(() => {
+  if (!selectedConnection.value) return '';
+  const selected = selectedEntities.value.find((entity) =>
+    entityCatalogSelectionId(selectedConnection.value!.id, entity.key) === props.selectedSourceId,
+  );
+  return selected?.key ?? '';
+});
+const selectedFileId = computed(() => fileIdFromSourceId(props.selectedSourceId));
 
 function selectTab(tab: SourcePanelTab): void {
   activeTab.value = tab;
@@ -58,6 +89,23 @@ function returnToConnections(): void {
   selectedConnection.value = null;
 }
 
+function selectEntity(sourceItem: SourceItem): void {
+  if (!selectedConnection.value) return;
+  emit('source-selected', {
+    kind: 'entity',
+    connection: selectedConnection.value,
+    sourceItem,
+  });
+}
+
+function selectFile(file: DataSourceFile): void {
+  emit('source-selected', {
+    kind: 'file',
+    file,
+    sourceItem: file.sourceItem,
+  });
+}
+
 function addFile(file: File): void {
   const sourceFile = createDataSourceFile(
     `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -65,6 +113,7 @@ function addFile(file: File): void {
   );
   files.value = [sourceFile, ...files.value];
   emit('file-uploaded', sourceFile);
+  if (props.mode === 'select') selectFile(sourceFile);
 }
 
 function removeFile(id: string): void {
@@ -116,7 +165,10 @@ function removeFile(id: string): void {
           v-if="selectedConnection"
           :connection="selectedConnection"
           :entities="selectedEntities"
+          :mode="mode"
+          :selected-key="selectedEntityKey"
           @back="returnToConnections"
+          @select="selectEntity"
         />
         <ConnectionList
           v-else
@@ -128,7 +180,10 @@ function removeFile(id: string): void {
       <SourceFilesPanel
         v-else
         :files="files"
+        :mode="mode"
+        :selected-file-id="selectedFileId"
         @remove="removeFile"
+        @select="selectFile"
         @upload="addFile"
       />
     </div>

@@ -8,13 +8,19 @@ import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
 import type { SourceItem } from '~/composables/useDataSourceCanvas';
 import DraggableSourceItem from './DraggableSourceItem.vue';
 
-const props = defineProps<{
-  connection: DataSourceConnection;
-  entities: SourceItem[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    connection: DataSourceConnection;
+    entities: SourceItem[];
+    mode?: 'drag' | 'select';
+    selectedKey?: string;
+  }>(),
+  { mode: 'drag', selectedKey: '' },
+);
 
 const emit = defineEmits<{
   back: [];
+  select: [entity: SourceItem];
 }>();
 
 const searchQuery = ref('');
@@ -72,14 +78,24 @@ const visibleEntities = computed(() =>
           class="h-8 w-full rounded-md border border-[#D8D8D8] bg-white pl-8 pr-2.5 text-xs text-[#25262E] placeholder:text-[#9A9A9A] outline-none focus:border-[#3B1770]"
         />
       </label>
-      <p class="mt-2 text-[11px] text-[#7A7A7A]">Drag an entity onto the canvas.</p>
+      <p class="mt-2 text-[11px] text-[#7A7A7A]">
+        {{ mode === 'drag' ? 'Drag an entity onto the canvas.' : 'Select one entity as the value provider.' }}
+      </p>
     </div>
 
-    <ul v-if="visibleEntities.length > 0" class="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+    <ul
+      v-if="visibleEntities.length > 0"
+      class="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
+      :role="mode === 'select' ? 'listbox' : undefined"
+      aria-label="Entities"
+    >
       <DraggableSourceItem
         v-for="entity in visibleEntities"
         :key="entity.key"
         :item="entity"
+        :mode="mode"
+        :selected="selectedKey === entity.key"
+        @select="emit('select', entity)"
       />
     </ul>
 

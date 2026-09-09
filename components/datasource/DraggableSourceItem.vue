@@ -10,9 +10,20 @@ const props = withDefaults(
     item: SourceItem;
     variant?: 'entity' | 'file';
     detail?: string;
+    mode?: 'drag' | 'select';
+    selected?: boolean;
   }>(),
-  { variant: 'entity', detail: '' },
+  {
+    variant: 'entity',
+    detail: '',
+    mode: 'drag',
+    selected: false,
+  },
 );
+
+const emit = defineEmits<{
+  select: [item: SourceItem];
+}>();
 
 const secondaryText = computed(() =>
   props.detail || (
@@ -23,6 +34,7 @@ const secondaryText = computed(() =>
 );
 
 function onDragStart(event: DragEvent): void {
+  if (props.mode !== 'drag') return;
   if (!event.dataTransfer) return;
   event.dataTransfer.effectAllowed = 'copy';
   event.dataTransfer.setData(SOURCE_DRAG_MIME, JSON.stringify(props.item));
@@ -32,10 +44,22 @@ function onDragStart(event: DragEvent): void {
 
 <template>
   <li
-    draggable="true"
-    class="group flex cursor-grab items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:border-[#D8D8D8] hover:bg-[#FAFAFA] active:cursor-grabbing"
-    :aria-label="`Drag ${item.label} to the canvas`"
+    :draggable="mode === 'drag'"
+    :role="mode === 'select' ? 'option' : undefined"
+    :tabindex="mode === 'select' ? 0 : undefined"
+    class="group flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors"
+    :class="[
+      mode === 'drag' ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+      selected
+        ? 'border-[#6F42A5] bg-[#F1ECFA]'
+        : 'border-transparent hover:border-[#D8D8D8] hover:bg-[#FAFAFA]',
+    ]"
+    :aria-label="mode === 'drag' ? `Drag ${item.label} to the canvas` : `Select ${item.label}`"
+    :aria-selected="mode === 'select' ? selected : undefined"
+    @click="mode === 'select' && emit('select', item)"
     @dragstart="onDragStart"
+    @keydown.enter.prevent="mode === 'select' && emit('select', item)"
+    @keydown.space.prevent="mode === 'select' && emit('select', item)"
   >
     <span
       class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md"
@@ -70,6 +94,17 @@ function onDragStart(event: DragEvent): void {
       <span class="mt-0.5 block truncate text-[11px] text-[#7A7A7A]">{{ secondaryText }}</span>
     </span>
 
-    <slot name="actions"></slot>
+    <slot name="actions">
+      <span
+        v-if="mode === 'select'"
+        class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border"
+        :class="selected ? 'border-[#6F42A5] bg-[#6F42A5] text-white' : 'border-[#BFC6CF] bg-white'"
+        aria-hidden="true"
+      >
+        <svg v-if="selected" viewBox="0 0 12 12" class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m2.5 6 2 2 5-5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </slot>
   </li>
 </template>

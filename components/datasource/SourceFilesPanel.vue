@@ -3,13 +3,19 @@ import { computed, ref } from 'vue';
 import type { DataSourceFile } from '~/composables/dataSourceCatalog';
 import DraggableSourceItem from './DraggableSourceItem.vue';
 
-const props = defineProps<{
-  files: DataSourceFile[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    files: DataSourceFile[];
+    mode?: 'drag' | 'select';
+    selectedFileId?: string;
+  }>(),
+  { mode: 'drag', selectedFileId: '' },
+);
 
 const emit = defineEmits<{
   upload: [file: File];
   remove: [id: string];
+  select: [file: DataSourceFile];
 }>();
 
 const searchQuery = ref('');
@@ -67,19 +73,51 @@ function removeFile(id: string): void {
           class="h-8 w-full rounded-md border border-[#D8D8D8] bg-white pl-8 pr-2.5 text-xs text-[#25262E] placeholder:text-[#9A9A9A] outline-none focus:border-[#3B1770]"
         />
       </label>
-      <p class="mt-2 text-[11px] text-[#7A7A7A]">Drag a file onto the canvas to use it as an entity.</p>
+      <p class="mt-2 text-[11px] text-[#7A7A7A]">
+        {{
+          mode === 'drag'
+            ? 'Drag a file onto the canvas to use it as an entity.'
+            : 'Select one prepared file as the value provider.'
+        }}
+      </p>
     </div>
 
-    <ul v-if="visibleFiles.length > 0" class="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+    <ul
+      v-if="visibleFiles.length > 0"
+      class="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
+      :role="mode === 'select' ? 'listbox' : undefined"
+      aria-label="Files"
+    >
       <DraggableSourceItem
         v-for="file in visibleFiles"
         :key="file.id"
         :item="file.sourceItem"
         variant="file"
+        :mode="mode"
+        :selected="selectedFileId === file.id"
         :detail="`${file.kind} · ${file.sourceItem.fields.length} fields`"
+        @select="emit('select', file)"
       >
         <template #actions>
-          <div class="relative flex-shrink-0" @click.stop @pointerdown.stop>
+          <span
+            v-if="mode === 'select'"
+            class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border"
+            :class="selectedFileId === file.id ? 'border-[#6F42A5] bg-[#6F42A5] text-white' : 'border-[#BFC6CF] bg-white'"
+            aria-hidden="true"
+          >
+            <svg
+              v-if="selectedFileId === file.id"
+              viewBox="0 0 12 12"
+              class="h-2.5 w-2.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="m2.5 6 2 2 5-5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+
+          <div v-else class="relative flex-shrink-0" @click.stop @pointerdown.stop>
             <button
               type="button"
               class="inline-flex h-7 w-7 items-center justify-center rounded text-[#52525B] transition-colors hover:bg-[#EDE7F5] hover:text-[#3B1770]"

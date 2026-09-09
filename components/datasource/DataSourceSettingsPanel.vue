@@ -8,17 +8,23 @@ import {
   type TimeBarSettings,
 } from '~/composables/useDataSourceGlobalSettings';
 import CacheConfigPanel from './CacheConfigPanel.vue';
+import FilterValuesSettingsPanel from './FilterValuesSettingsPanel.vue';
 import GlobalFiltersSettingsPanel from './GlobalFiltersSettingsPanel.vue';
 import MapLocaleSettingsPanel from './MapLocaleSettingsPanel.vue';
 import TimeBarSettingsPanel from './TimeBarSettingsPanel.vue';
 
-type SettingsSection = 'time-bar' | 'cache' | 'map-locale' | 'global-filters';
+type SettingsSection =
+  | 'time-bar'
+  | 'cache'
+  | 'filter-values'
+  | 'map-locale'
+  | 'global-filters';
 
 interface SettingsNavigationItem {
   id: SettingsSection;
   label: string;
   description: string;
-  icon: 'clock' | 'cache' | 'map' | 'filter';
+  icon: 'clock' | 'cache' | 'values' | 'map' | 'filter';
 }
 
 const NAVIGATION: SettingsNavigationItem[] = [
@@ -33,6 +39,12 @@ const NAVIGATION: SettingsNavigationItem[] = [
     label: 'Cache',
     description: 'Results and field statistics',
     icon: 'cache',
+  },
+  {
+    id: 'filter-values',
+    label: 'Filter values',
+    description: 'Prepared lookup values',
+    icon: 'values',
   },
   {
     id: 'map-locale',
@@ -89,10 +101,9 @@ function updateMapLocale(value: MapLocaleSettings): void {
 
 <template>
   <div class="flex h-full min-h-0 bg-[#FAFAFA]">
-    <aside class="flex w-56 flex-shrink-0 flex-col border-r border-[#E2E2E2] bg-white" aria-label="Settings sections">
+    <aside class="flex w-56 flex-shrink-0 flex-col border-r border-[#E2E2E2] bg-white" aria-label="Configuration sections">
       <div class="border-b border-[#EAEAEA] px-4 py-5">
-        <h1 class="text-base font-semibold text-[#25262E]">Settings</h1>
-        <p class="mt-0.5 text-xs text-[#6B6B6B]">Source configuration</p>
+        <h1 class="text-base font-semibold text-[#25262E]">Data source configuration</h1>
       </div>
 
       <nav class="flex-1 space-y-1 overflow-y-auto p-2.5">
@@ -135,6 +146,18 @@ function updateMapLocale(value: MapLocaleSettings): void {
               <ellipse cx="12" cy="6" rx="7.5" ry="3" />
               <path d="M4.5 6v6c0 1.7 3.4 3 7.5 3 1.4 0 2.8-.2 3.9-.5M4.5 12v6c0 1.7 3.4 3 7.5 3 1.1 0 2.2-.1 3.1-.3" />
               <path d="M20.5 15.5a4 4 0 1 0 .1 4M20.5 15.5v3h-3" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg
+              v-else-if="item.icon === 'values'"
+              viewBox="0 0 24 24"
+              class="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M4 5h16M4 12h9M4 19h7" stroke-linecap="round" />
+              <circle cx="17.5" cy="15" r="2.5" />
+              <path d="M17.5 11.5v1M17.5 17.5v1M14 15h1M20 15h1" stroke-linecap="round" />
             </svg>
             <svg
               v-else-if="item.icon === 'map'"
@@ -193,6 +216,13 @@ function updateMapLocale(value: MapLocaleSettings): void {
         v-else-if="activeSection === 'cache'"
         class="h-full"
         @go-to-canvas="emit('go-to-canvas')"
+      />
+
+      <FilterValuesSettingsPanel
+        v-else-if="activeSection === 'filter-values'"
+        :target-fields="availableFields"
+        :source-name="props.sourceName"
+        class="h-full overflow-y-auto"
       />
 
       <MapLocaleSettingsPanel

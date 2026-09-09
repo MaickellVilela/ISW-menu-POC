@@ -16,6 +16,32 @@ export interface DataSourceFile {
   sourceItem: SourceItem;
 }
 
+export type SourceCatalogSelection =
+  | {
+    kind: 'entity';
+    connection: DataSourceConnection;
+    sourceItem: SourceItem;
+  }
+  | {
+    kind: 'file';
+    file: DataSourceFile;
+    sourceItem: SourceItem;
+  };
+
+export function entityCatalogSelectionId(connectionId: string, entityKey: string): string {
+  return `entity:${connectionId}:${entityKey}`;
+}
+
+export function fileCatalogSelectionId(fileId: string): string {
+  return `file:${fileId}`;
+}
+
+export function sourceCatalogSelectionId(selection: SourceCatalogSelection): string {
+  return selection.kind === 'entity'
+    ? entityCatalogSelectionId(selection.connection.id, selection.sourceItem.key)
+    : fileCatalogSelectionId(selection.file.id);
+}
+
 const ENTITY_SETS = {
   all: ENTITIES.map((entity) => entity.key),
   commerce: ['orders', 'order_items', 'customers', 'products'],
@@ -88,7 +114,7 @@ export function filterSourceItems(items: SourceItem[], query: string): SourceIte
   );
 }
 
-function fileKind(name: string): DataSourceFile['kind'] {
+export function dataSourceFileKind(name: string): DataSourceFile['kind'] {
   const extension = name.split('.').pop()?.toLowerCase();
   if (extension === 'csv') return 'CSV';
   if (extension === 'xls' || extension === 'xlsx') return 'Excel';
@@ -112,11 +138,11 @@ export function createDataSourceFile(id: string, name: string, fields: FieldDef[
   return {
     id,
     name,
-    kind: fileKind(name),
+    kind: dataSourceFileKind(name),
     sourceItem: {
       key: `file-${id}`,
       label,
-      description: `${fileKind(name)} file`,
+      description: `${dataSourceFileKind(name)} file`,
       fields: cloneFields(fields),
     },
   };
