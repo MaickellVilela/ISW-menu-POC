@@ -11,7 +11,7 @@ const preview: Preview = {
     },
     options: {
       storySort: {
-        order: ['Foundations', 'Components'],
+        order: ['Overview', 'Foundations', 'Components'],
       },
     },
     a11y: {
