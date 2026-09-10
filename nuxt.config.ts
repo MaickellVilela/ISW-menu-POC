@@ -3,13 +3,8 @@ import { tailwindColors } from './design-system/tokens';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: true },
-  modules: ["@nuxtjs/tailwindcss", '@nuxtjs/storybook'],
+  modules: ["@nuxtjs/tailwindcss"],
   css: ['~/assets/css/tailwind.css'],
-  // Keep Storybook opt-in via `npm run storybook` instead of auto-starting with `nuxt dev`.
-  storybook: {
-    enabled: false,
-    port: 6006,
-  },
   tailwindcss: {
     config: {
       content: [
