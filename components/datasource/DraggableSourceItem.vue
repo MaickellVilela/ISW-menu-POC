@@ -4,6 +4,7 @@ import {
   SOURCE_DRAG_MIME,
   type SourceItem,
 } from '~/composables/useDataSourceCanvas';
+import HighlightedText from './HighlightedText.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -12,12 +13,18 @@ const props = withDefaults(
     detail?: string;
     mode?: 'drag' | 'select';
     selected?: boolean;
+    inUse?: boolean;
+    searchQuery?: string;
+    sourceId?: string;
   }>(),
   {
     variant: 'entity',
     detail: '',
     mode: 'drag',
     selected: false,
+    inUse: false,
+    searchQuery: '',
+    sourceId: '',
   },
 );
 
@@ -33,11 +40,20 @@ const secondaryText = computed(() =>
   ),
 );
 
+const dragAriaLabel = computed(() => {
+  if (props.mode === 'select') return `Select ${props.item.label}`;
+  if (props.inUse) return `Drag ${props.item.label} to the canvas, already in use`;
+  return `Drag ${props.item.label} to the canvas`;
+});
+
 function onDragStart(event: DragEvent): void {
   if (props.mode !== 'drag') return;
   if (!event.dataTransfer) return;
   event.dataTransfer.effectAllowed = 'copy';
-  event.dataTransfer.setData(SOURCE_DRAG_MIME, JSON.stringify(props.item));
+  event.dataTransfer.setData(
+    SOURCE_DRAG_MIME,
+    JSON.stringify({ item: props.item, sourceId: props.sourceId }),
+  );
   event.dataTransfer.setData('text/plain', props.item.label);
 }
 </script>
@@ -52,9 +68,11 @@ function onDragStart(event: DragEvent): void {
       mode === 'drag' ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
       selected
         ? 'border-[#6F42A5] bg-[#F1ECFA]'
-        : 'border-transparent hover:border-[#D8D8D8] hover:bg-[#FAFAFA]',
+        : inUse
+          ? 'border-[#D4C8EA] bg-[#F8F6FC]'
+          : 'border-transparent hover:border-[#D8D8D8] hover:bg-[#FAFAFA]',
     ]"
-    :aria-label="mode === 'drag' ? `Drag ${item.label} to the canvas` : `Select ${item.label}`"
+    :aria-label="dragAriaLabel"
     :aria-selected="mode === 'select' ? selected : undefined"
     @click="mode === 'select' && emit('select', item)"
     @dragstart="onDragStart"
@@ -90,7 +108,9 @@ function onDragStart(event: DragEvent): void {
     </span>
 
     <span class="min-w-0 flex-1">
-      <span class="block truncate text-sm font-medium text-[#25262E]">{{ item.label }}</span>
+      <span class="block truncate text-sm font-medium text-[#25262E]">
+        <HighlightedText :text="item.label" :query="searchQuery" />
+      </span>
       <span class="mt-0.5 block truncate text-[11px] text-[#7A7A7A]">{{ secondaryText }}</span>
     </span>
 

@@ -1,5 +1,10 @@
 import { ref, computed, onMounted, watch, type Ref } from 'vue';
+import { entityCatalogSelectionId } from './dataSourceCatalog';
+import { isManagedEntityKey } from './dataSourceEntities';
 import { createHistory } from './useHistory';
+
+/** Connection used when a stored table has no catalog id (pre-id canvases / demos). */
+const FALLBACK_TABLE_CONNECTION_ID = 'managed';
 
 export type CanvasNodeType = 'table' | 'join' | 'output';
 export type JoinType = 'inner' | 'left' | 'full';
@@ -52,6 +57,10 @@ export interface CanvasNode {
   conditions?: JoinCondition[];
   /** Table nodes: when true the field list is hidden (header only). */
   collapsed?: boolean;
+  /** Catalog key of the entity this table was created from, when known. */
+  sourceKey?: string;
+  /** Stable catalog id, e.g. `entity:managed:orders` or `file:orders-csv`. */
+  sourceId?: string;
 }
 
 export interface Point {
@@ -89,6 +98,33 @@ export const JOIN_COLLAPSED_RIGHT_DY = 27;
 /** MIME type used to carry a SourceItem across the native drag-and-drop boundary. */
 export const SOURCE_DRAG_MIME = 'application/x-datasource-item';
 
+export interface SourceDragPayload {
+  item: SourceItem;
+  /** Catalog id of the dragged source, e.g. `entity:managed:orders`. */
+  sourceId: string;
+}
+
+export function parseSourceDragPayload(raw: string): SourceDragPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as SourceDragPayload | SourceItem;
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && 'item' in parsed
+      && 'sourceId' in parsed
+      && parsed.item
+    ) {
+      return { item: parsed.item, sourceId: String(parsed.sourceId ?? '') };
+    }
+    if (parsed && typeof parsed === 'object' && 'key' in parsed && 'label' in parsed) {
+      return { item: parsed as SourceItem, sourceId: '' };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const JOIN_TYPE_LABELS: Record<JoinType, string> = {
   inner: 'Inner',
   left: 'Left',
@@ -109,11 +145,18 @@ export function createId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${idSequence}`;
 }
 
-export function createTableNode(item: SourceItem, x: number, y: number): CanvasNode {
+export function createTableNode(
+  item: SourceItem,
+  x: number,
+  y: number,
+  sourceId?: string,
+): CanvasNode {
   return {
     id: createId('table'),
     type: 'table',
     label: item.label,
+    sourceKey: item.key,
+    sourceId,
     x,
     y,
     fields: item.fields.map((field) => ({ ...field })),
@@ -448,6 +491,39 @@ export function fieldsFromCanvasNodes(nodes: CanvasNode[]): FieldOption[] {
     .flatMap((node) => collectSourceFields(nodes, node.id));
 }
 
+/** Catalog id for a canvas table, inferring Managed when older layouts omitted `sourceId`. */
+export function resolvedTableSourceId(node: CanvasNode): string {
+  if (node.type !== 'table') return '';
+  if (node.sourceId) return node.sourceId;
+  if (!node.sourceKey || !isManagedEntityKey(node.sourceKey)) return '';
+  return entityCatalogSelectionId(FALLBACK_TABLE_CONNECTION_ID, node.sourceKey);
+}
+
+/** Stamps missing catalog ids so in-use highlighting survives older saved canvases. */
+export function stampMissingTableSourceIds(nodes: CanvasNode[]): CanvasNode[] {
+  return nodes.map((node) => {
+    const sourceId = resolvedTableSourceId(node);
+    if (node.type !== 'table' || !sourceId || node.sourceId === sourceId) return node;
+    return { ...node, sourceId };
+  });
+}
+
+/** Catalog ids of tables currently on the canvas (`entity:connection:key` or `file:id`). */
+export function canvasTableIdentities(nodes: CanvasNode[]): string[] {
+  const identities = new Set<string>();
+  for (const node of nodes) {
+    const sourceId = resolvedTableSourceId(node);
+    if (sourceId) identities.add(sourceId);
+  }
+  return [...identities];
+}
+
+export function isCatalogSourceOnCanvas(identities: Iterable<string>, sourceId: string): boolean {
+  if (!sourceId) return false;
+  const used = identities instanceof Set ? identities : new Set(identities);
+  return used.has(sourceId);
+}
+
 /** All field values currently referenced by any join condition (e.g. "Locations.id"). */
 export function usedFieldValues(nodes: CanvasNode[]): Set<string> {
   const used = new Set<string>();
@@ -602,7 +678,7 @@ export function useDataSourceCanvas() {
   function loadFromStorage(): void {
     if (typeof window === 'undefined') return;
     const stored = parseCanvasNodes(window.localStorage.getItem(CANVAS_LAYOUT_STORAGE_KEY));
-    if (stored.length) nodes.value = stored;
+    if (stored.length) nodes.value = stampMissingTableSourceIds(stored);
     ensureOutput();
   }
 
@@ -665,8 +741,8 @@ export function useDataSourceCanvas() {
     };
   }
 
-  function addTable(item: SourceItem, x: number, y: number): CanvasNode {
-    const node = createTableNode(item, x, y);
+  function addTable(item: SourceItem, x: number, y: number, sourceId?: string): CanvasNode {
+    const node = createTableNode(item, x, y, sourceId);
     nodes.value.push(node);
     return node;
   }

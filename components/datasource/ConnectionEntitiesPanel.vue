@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import {
+  entityCatalogSelectionId,
   filterSourceItems,
   type DataSourceConnection,
 } from '~/composables/dataSourceCatalog';
 import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
-import type { SourceItem } from '~/composables/useDataSourceCanvas';
+import { isCatalogSourceOnCanvas, type SourceItem } from '~/composables/useDataSourceCanvas';
 import DraggableSourceItem from './DraggableSourceItem.vue';
 
 const props = withDefaults(
@@ -14,19 +15,25 @@ const props = withDefaults(
     entities: SourceItem[];
     mode?: 'drag' | 'select';
     selectedKey?: string;
+    searchQuery?: string;
+    usedTableIdentities?: string[];
   }>(),
-  { mode: 'drag', selectedKey: '' },
+  { mode: 'drag', selectedKey: '', searchQuery: '', usedTableIdentities: () => [] },
 );
 
 const emit = defineEmits<{
   back: [];
   select: [entity: SourceItem];
+  'update:searchQuery': [query: string];
 }>();
 
-const searchQuery = ref('');
 const visibleEntities = computed(() =>
-  filterSourceItems(props.entities, searchQuery.value),
+  filterSourceItems(props.entities, props.searchQuery),
 );
+
+function sourceIdFor(entity: SourceItem): string {
+  return entityCatalogSelectionId(props.connection.id, entity.key);
+}
 </script>
 
 <template>
@@ -72,9 +79,10 @@ const visibleEntities = computed(() =>
           <path d="m20 20-3-3" stroke-linecap="round" />
         </svg>
         <input
-          v-model="searchQuery"
+          :value="searchQuery"
           type="search"
           placeholder="Search entities"
+          @input="emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           class="h-8 w-full rounded-md border border-[#D8D8D8] bg-white pl-8 pr-2.5 text-xs text-[#25262E] placeholder:text-[#9A9A9A] outline-none focus:border-[#3B1770]"
         />
       </label>
@@ -95,6 +103,9 @@ const visibleEntities = computed(() =>
         :item="entity"
         :mode="mode"
         :selected="selectedKey === entity.key"
+        :source-id="sourceIdFor(entity)"
+        :in-use="isCatalogSourceOnCanvas(usedTableIdentities, sourceIdFor(entity))"
+        :search-query="searchQuery"
         @select="emit('select', entity)"
       />
     </ul>

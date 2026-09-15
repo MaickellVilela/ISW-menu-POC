@@ -75,9 +75,9 @@ function removeConfiguration(): void {
 <template>
   <div class="mx-auto max-w-4xl px-6 py-7 lg:px-10 lg:py-9">
     <header>
-      <h1 class="text-xl font-semibold text-[#25262E]">Filter values</h1>
+      <h1 class="text-xl font-semibold text-[#25262E]">Performance filters</h1>
       <p class="mt-1 max-w-2xl text-sm leading-relaxed text-[#6B6B6B]">
-        Use a small prepared source to populate filter choices without scanning the full dataset.
+        Prepare lookup values for future filter UIs. This does not filter this source's output.
       </p>
     </header>
 
@@ -240,7 +240,7 @@ function removeConfiguration(): void {
       <section class="mt-5 rounded-xl border border-[#E2E2E2] bg-[#FAFAFA] p-5">
         <h2 class="text-sm font-semibold text-[#25262E]">How this is used</h2>
         <p class="mt-1 text-sm leading-relaxed text-[#667085]">
-          Filter controls query this prepared source for options. Queries against the primary dataset still run only when a viewer applies a filter.
+          Filter controls query this prepared source for options. The source output still returns every row until a viewer applies a filter.
         </p>
       </section>
 

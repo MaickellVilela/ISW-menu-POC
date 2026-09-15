@@ -7,6 +7,9 @@ import {
   type JoinType,
 } from './useDataSourceCanvas';
 import { entityByKey } from './dataSourceEntities';
+import { entityCatalogSelectionId } from './dataSourceCatalog';
+
+const DEMO_CONNECTION_ID = 'managed';
 
 /* -------------------------------------------------------------------------- */
 /* Declarative preset specs                                                   */
@@ -61,7 +64,12 @@ export function buildPreset(spec: PresetSpec): CanvasNode[] {
   for (const table of spec.tables) {
     const entity = entityByKey(table.alias);
     if (!entity) continue;
-    const node = createTableNode(entity, table.x, table.y);
+    const node = createTableNode(
+      entity,
+      table.x,
+      table.y,
+      entityCatalogSelectionId(DEMO_CONNECTION_ID, table.alias),
+    );
     idByAlias.set(table.alias, node.id);
     nodes.push(node);
   }

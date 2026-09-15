@@ -42,8 +42,8 @@ const NAVIGATION: SettingsNavigationItem[] = [
   },
   {
     id: 'filter-values',
-    label: 'Filter values',
-    description: 'Prepared lookup values',
+    label: 'Performance filters',
+    description: 'Lookups for filter UIs, not this output',
     icon: 'values',
   },
   {
@@ -55,7 +55,7 @@ const NAVIGATION: SettingsNavigationItem[] = [
   {
     id: 'global-filters',
     label: 'Global filters',
-    description: 'Defaults for every visual',
+    description: 'Filters applied to the source output',
     icon: 'filter',
   },
 ];

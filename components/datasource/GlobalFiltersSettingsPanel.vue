@@ -100,15 +100,15 @@ function updateNestingOperator(event: Event): void {
     <header>
       <h1 class="text-xl font-semibold text-[#25262E]">Global filters</h1>
       <p class="mt-1 max-w-2xl text-sm leading-relaxed text-[#6B6B6B]">
-        Apply a starting filter to every new visual that uses this source.
+        Filters applied to the entire source output. Every visual that uses this source starts from this subset.
       </p>
     </header>
 
     <section class="mt-7">
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-[#D8DCE2] pb-3">
         <div>
-          <h2 class="text-sm font-semibold text-[#25262E]">Settings affecting new visuals only</h2>
-          <p class="mt-0.5 text-xs text-[#6B6B6B]">Choose fields, values, and how filters are combined.</p>
+          <h2 class="text-sm font-semibold text-[#25262E]">Applied to the source output</h2>
+          <p class="mt-0.5 text-xs text-[#6B6B6B]">Choose fields, values, and how these filters are combined.</p>
         </div>
         <button
           type="button"
@@ -133,7 +133,7 @@ function updateNestingOperator(event: Event): void {
         </span>
         <h3 class="mt-4 text-sm font-semibold text-[#25262E]">No global filters</h3>
         <p class="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
-          Add a filter when every new visual should begin with the same subset of source data.
+          Add a filter when the source output should start from a subset of the data.
         </p>
         <button
           type="button"

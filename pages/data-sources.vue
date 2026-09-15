@@ -13,14 +13,14 @@
         class="min-w-0 flex-1 border-r border-[#D8D8D8] bg-white"
         aria-label="Canvas"
       >
-        <DataSourceCanvas />
+        <DataSourceCanvas @update:used-table-identities="usedTableIdentities = $event" />
       </section>
 
       <aside
         class="w-[280px] flex-shrink-0 bg-white lg:w-[320px]"
         aria-label="Source browser"
       >
-        <SourcePanel />
+        <SourcePanel :used-table-identities="usedTableIdentities" />
       </aside>
     </div>
 
@@ -40,4 +40,5 @@ import DataSourceWorkspaceHeader from '~/components/datasource/DataSourceWorkspa
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
 
 const section = ref<'canvas' | 'settings'>('canvas');
+const usedTableIdentities = ref<string[]>([]);
 </script>

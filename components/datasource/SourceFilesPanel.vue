@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { DataSourceFile } from '~/composables/dataSourceCatalog';
+import { fileCatalogSelectionId, type DataSourceFile } from '~/composables/dataSourceCatalog';
 import DraggableSourceItem from './DraggableSourceItem.vue';
 
 const props = withDefaults(
@@ -96,6 +96,8 @@ function removeFile(id: string): void {
         :mode="mode"
         :selected="selectedFileId === file.id"
         :detail="`${file.kind} · ${file.sourceItem.fields.length} fields`"
+        :source-id="fileCatalogSelectionId(file.id)"
+        :search-query="searchQuery"
         @select="emit('select', file)"
       >
         <template #actions>

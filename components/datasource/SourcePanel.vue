@@ -24,12 +24,14 @@ const props = withDefaults(
     initialFiles?: DataSourceFile[];
     mode?: 'drag' | 'select';
     selectedSourceId?: string;
+    usedTableIdentities?: string[];
   }>(),
   {
     connections: () => DATA_SOURCE_CONNECTIONS,
     initialFiles: () => DATA_SOURCE_FILES,
     mode: 'drag',
     selectedSourceId: '',
+    usedTableIdentities: () => [],
   },
 );
 
@@ -56,6 +58,7 @@ const activeTab = ref<SourcePanelTab>(
 const selectedConnection = ref<DataSourceConnection | null>(
   props.connections.find((connection) => connection.id === initialConnectionId) ?? null,
 );
+const catalogSearchQuery = ref('');
 const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
   ...file,
   sourceItem: {
@@ -167,13 +170,19 @@ function removeFile(id: string): void {
           :entities="selectedEntities"
           :mode="mode"
           :selected-key="selectedEntityKey"
+          :search-query="catalogSearchQuery"
+          :used-table-identities="usedTableIdentities"
           @back="returnToConnections"
           @select="selectEntity"
+          @update:search-query="catalogSearchQuery = $event"
         />
         <ConnectionList
           v-else
           :connections="connections"
+          :search-query="catalogSearchQuery"
+          :used-table-identities="usedTableIdentities"
           @select="selectConnection"
+          @update:search-query="catalogSearchQuery = $event"
         />
       </template>
 

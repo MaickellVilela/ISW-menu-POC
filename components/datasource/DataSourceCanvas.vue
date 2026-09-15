@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import {
   useDataSourceCanvas,
   outputAnchor,
   inputAnchor,
   collectSourceFields,
   usedFieldValues,
+  canvasTableIdentities,
+  parseSourceDragPayload,
   findSuggestedOutputSource,
   nodeWidth,
   nodeSize,
@@ -13,7 +15,6 @@ import {
   NODE_WIDTH,
   PORT_DY,
   type CanvasNode as CanvasNodeModel,
-  type SourceItem,
   type Point,
 } from '~/composables/useDataSourceCanvas';
 import CanvasNode from './CanvasNode.vue';
@@ -53,6 +54,16 @@ const {
   canUndo,
   canRedo,
 } = useDataSourceCanvas();
+
+const emit = defineEmits<{
+  'update:usedTableIdentities': [identities: string[]];
+}>();
+
+const usedTableIdentities = computed(() => canvasTableIdentities(nodes.value));
+
+watch(usedTableIdentities, (identities) => {
+  emit('update:usedTableIdentities', identities);
+}, { immediate: true });
 
 const surface = ref<HTMLElement | null>(null);
 const viewport = ref<HTMLElement | null>(null);
@@ -253,15 +264,11 @@ function onDrop(event: DragEvent): void {
   const raw = event.dataTransfer?.getData(SOURCE_DRAG_MIME);
   if (!raw) return;
 
-  let item: SourceItem;
-  try {
-    item = JSON.parse(raw) as SourceItem;
-  } catch {
-    return;
-  }
+  const payload = parseSourceDragPayload(raw);
+  if (!payload) return;
 
   const { x, y } = toSurfaceCoords(event);
-  addTable(item, x - NODE_WIDTH / 2, y - PORT_DY);
+  addTable(payload.item, x - NODE_WIDTH / 2, y - PORT_DY, payload.sourceId);
 }
 
 /* --------------------- move nodes & connect handles ---------------------- */

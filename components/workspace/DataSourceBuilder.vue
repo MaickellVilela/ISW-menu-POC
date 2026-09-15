@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import DataSourceCanvas from '~/components/datasource/DataSourceCanvas.vue';
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
 
@@ -9,6 +10,8 @@ withDefaults(
   }>(),
   { showSourcePanel: true },
 );
+
+const usedTableIdentities = ref<string[]>([]);
 </script>
 
 <template>
@@ -18,11 +21,11 @@ withDefaults(
       :class="showSourcePanel ? 'w-[80%] border-r border-[#D8D8D8]' : 'w-full'"
       aria-label="Canvas"
     >
-      <DataSourceCanvas />
+      <DataSourceCanvas @update:used-table-identities="usedTableIdentities = $event" />
     </section>
 
     <aside v-if="showSourcePanel" class="w-[20%] bg-white" aria-label="Details sidebar">
-      <SourcePanel />
+      <SourcePanel :used-table-identities="usedTableIdentities" />
     </aside>
   </div>
 </template>
