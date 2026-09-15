@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import {
   DATA_SOURCE_FILES,
+  catalogSelectionFromSourceId,
   type DataSourceFile,
   type SourceCatalogSelection,
 } from '~/composables/dataSourceCatalog';
@@ -27,11 +28,15 @@ const props = withDefaults(
     existingProvider?: FilterValueProvider | null;
     existingMappings?: FilterValueMapping[];
     initialStep?: ConfigurationStep;
+    initialSourceId?: string;
+    originLabel?: string;
   }>(),
   {
     existingProvider: null,
     existingMappings: () => [],
     initialStep: 'source',
+    initialSourceId: '',
+    originLabel: 'Performance filters',
   },
 );
 
@@ -78,10 +83,26 @@ function newMapping(provider: FilterValueProvider): FilterValueMapping {
   );
 }
 
+function providerFromCanvasSource(): FilterValueProvider | null {
+  if (!props.initialSourceId) return null;
+  const selection = catalogSelectionFromSourceId(props.initialSourceId);
+  return selection ? providerFromCatalogSelection(selection) : null;
+}
+
 function reset(): void {
-  selectedProvider.value = props.existingProvider;
-  mappings.value = props.existingMappings.map((mapping) => ({ ...mapping }));
-  step.value = props.initialStep === 'mapping' && props.existingProvider
+  const canvasProvider = providerFromCanvasSource();
+  const provider = canvasProvider ?? props.existingProvider ?? null;
+  const sameAsExisting = Boolean(
+    provider && props.existingProvider && provider.id === props.existingProvider.id,
+  );
+
+  selectedProvider.value = provider;
+  mappings.value = sameAsExisting
+    ? props.existingMappings.map((mapping) => ({ ...mapping }))
+    : provider && props.targetFields.length > 0 && provider.sourceItem.fields.length > 0
+      ? [newMapping(provider)]
+      : [];
+  step.value = props.initialStep === 'mapping' && sameAsExisting && props.existingProvider
     ? 'mapping'
     : 'source';
 }
@@ -151,7 +172,8 @@ function save(): void {
               </svg>
             </button>
             <div>
-              <h2 class="text-xl font-semibold text-[#25262E]">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-[#6F42A5]">{{ originLabel }}</p>
+              <h2 class="mt-1 text-xl font-semibold text-[#25262E]">
                 {{ step === 'source' ? 'Choose a value source' : 'Configure filter values' }}
               </h2>
               <p class="mt-0.5 text-xs text-[#667085]">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { FieldOption } from '~/composables/useDataSourceCanvas';
 import {
   mappingLabel,
@@ -17,6 +17,9 @@ import SourcePreviewModal from './SourcePreviewModal.vue';
 const props = defineProps<{
   targetFields: FieldOption[];
   sourceName: string;
+  autoOpenSource?: boolean;
+  initialSourceId?: string;
+  openMapping?: boolean;
 }>();
 
 const {
@@ -40,7 +43,17 @@ const fileProvider = computed<FileFilterValueProvider | null>(() =>
     : null,
 );
 
-onMounted(load);
+load();
+
+watch(
+  () => [props.autoOpenSource, props.openMapping] as const,
+  ([shouldOpen, openMapping]) => {
+    if (!shouldOpen) return;
+    if (openMapping && configuration.value.provider) openMappingEditor();
+    else openSourceSelection();
+  },
+  { immediate: true },
+);
 
 function openSourceSelection(): void {
   sourceModalStep.value = 'source';
@@ -271,6 +284,8 @@ function removeConfiguration(): void {
       :existing-provider="configuration.provider"
       :existing-mappings="configuration.mappings"
       :initial-step="sourceModalStep"
+      :initial-source-id="initialSourceId"
+      origin-label="Performance filters"
       @cancel="showSourceModal = false"
       @save="saveConfiguration"
     />

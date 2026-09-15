@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import type { FieldOption } from '~/composables/useDataSourceCanvas';
 import { readCanvasFieldOptions } from '~/composables/useDataSourceCache';
+import {
+  mergeFieldOption,
+  type CanvasFilterShortcut,
+  type DataSourceSettingsSection,
+} from '~/composables/canvasFilterShortcuts';
 import {
   useDataSourceGlobalSettings,
   type MapLocaleSettings,
@@ -13,12 +18,7 @@ import GlobalFiltersSettingsPanel from './GlobalFiltersSettingsPanel.vue';
 import MapLocaleSettingsPanel from './MapLocaleSettingsPanel.vue';
 import TimeBarSettingsPanel from './TimeBarSettingsPanel.vue';
 
-type SettingsSection =
-  | 'time-bar'
-  | 'cache'
-  | 'filter-values'
-  | 'map-locale'
-  | 'global-filters';
+type SettingsSection = DataSourceSettingsSection;
 
 interface SettingsNavigationItem {
   id: SettingsSection;
@@ -62,16 +62,32 @@ const NAVIGATION: SettingsNavigationItem[] = [
 
 const emit = defineEmits<{
   'go-to-canvas': [];
+  'shortcut-consumed': [];
+  'update:activeSection': [section: SettingsSection];
 }>();
 
 const props = withDefaults(
   defineProps<{
     sourceName?: string;
+    activeSection: SettingsSection;
+    shortcut?: CanvasFilterShortcut | null;
   }>(),
-  { sourceName: 'Untitled data source' },
+  { sourceName: 'Untitled data source', shortcut: null },
 );
 
-const activeSection = ref<SettingsSection>('time-bar');
+const autoOpenPerformanceSource = computed(() => props.shortcut?.destination === 'performance');
+const initialPerformanceSourceId = computed(() =>
+  props.shortcut?.destination === 'performance' ? props.shortcut.sourceId ?? '' : '',
+);
+const openPerformanceMapping = computed(() =>
+  Boolean(props.shortcut?.destination === 'performance' && props.shortcut.openMapping),
+);
+const initialGlobalField = computed(() =>
+  props.shortcut?.destination === 'global' ? props.shortcut.field ?? null : null,
+);
+const initialGlobalFilterId = computed(() =>
+  props.shortcut?.destination === 'global' ? props.shortcut.filterId ?? '' : '',
+);
 const availableFields = ref<FieldOption[]>([]);
 const {
   settings,
@@ -85,9 +101,12 @@ const {
   moveFilterToRoot,
 } = useDataSourceGlobalSettings();
 
-onMounted(() => {
-  load();
-  availableFields.value = readCanvasFieldOptions();
+load();
+availableFields.value = mergeFieldOption(readCanvasFieldOptions(), initialGlobalField.value);
+
+onMounted(async () => {
+  await nextTick();
+  if (props.shortcut) emit('shortcut-consumed');
 });
 
 function updateTimeBar(value: TimeBarSettings): void {
@@ -118,7 +137,7 @@ function updateMapLocale(value: MapLocaleSettings): void {
               : 'text-[#52525B] hover:bg-[#F7F7F8] hover:text-[#25262E]'
           "
           :aria-current="activeSection === item.id ? 'page' : undefined"
-          @click="activeSection = item.id"
+          @click="emit('update:activeSection', item.id)"
         >
           <span
             class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md"
@@ -222,6 +241,9 @@ function updateMapLocale(value: MapLocaleSettings): void {
         v-else-if="activeSection === 'filter-values'"
         :target-fields="availableFields"
         :source-name="props.sourceName"
+        :auto-open-source="autoOpenPerformanceSource"
+        :initial-source-id="initialPerformanceSourceId"
+        :open-mapping="openPerformanceMapping"
         class="h-full overflow-y-auto"
       />
 
@@ -233,11 +255,13 @@ function updateMapLocale(value: MapLocaleSettings): void {
       />
 
       <GlobalFiltersSettingsPanel
-        v-else
+        v-else-if="activeSection === 'global-filters'"
         :model-value="settings.filters"
         :filter-nesting="settings.filterNesting"
         :available-fields="availableFields"
         :source-name="props.sourceName"
+        :initial-field="initialGlobalField"
+        :initial-filter-id="initialGlobalFilterId"
         class="h-full overflow-y-auto"
         @add="addFilter"
         @update="updateFilter"

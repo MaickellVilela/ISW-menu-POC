@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   DATA_SOURCE_CONNECTIONS,
   DATA_SOURCE_FILES,
   createDataSourceFile,
   entityCatalogSelectionId,
   entitiesForConnection,
-  fileCatalogSelectionId,
+  parseCatalogSourceId,
   type DataSourceConnection,
   type DataSourceFile,
   type SourceCatalogSelection,
@@ -42,22 +42,8 @@ const emit = defineEmits<{
   'source-selected': [selection: SourceCatalogSelection];
 }>();
 
-function connectionIdFromSourceId(sourceId: string): string | null {
-  const match = sourceId.match(/^entity:([^:]+):/);
-  return match?.[1] ?? null;
-}
-
-function fileIdFromSourceId(sourceId: string): string {
-  return sourceId.startsWith('file:') ? sourceId.slice('file:'.length) : '';
-}
-
-const initialConnectionId = connectionIdFromSourceId(props.selectedSourceId);
-const activeTab = ref<SourcePanelTab>(
-  props.selectedSourceId.startsWith('file:') ? 'files' : 'connections',
-);
-const selectedConnection = ref<DataSourceConnection | null>(
-  props.connections.find((connection) => connection.id === initialConnectionId) ?? null,
-);
+const activeTab = ref<SourcePanelTab>('connections');
+const selectedConnection = ref<DataSourceConnection | null>(null);
 const catalogSearchQuery = ref('');
 const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
   ...file,
@@ -66,6 +52,25 @@ const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
     fields: file.sourceItem.fields.map((field) => ({ ...field })),
   },
 })));
+
+function applySelectedSourceId(sourceId: string): void {
+  const parsed = parseCatalogSourceId(sourceId);
+  if (!parsed) return;
+  if (parsed.kind === 'file') {
+    activeTab.value = 'files';
+    return;
+  }
+  const connection = props.connections.find((item) => item.id === parsed.connectionId);
+  if (!connection) return;
+  activeTab.value = 'connections';
+  selectedConnection.value = connection;
+}
+
+watch(
+  () => props.selectedSourceId,
+  (sourceId) => applySelectedSourceId(sourceId),
+  { immediate: true },
+);
 
 const selectedEntities = computed(() =>
   selectedConnection.value ? entitiesForConnection(selectedConnection.value) : [],
@@ -77,7 +82,10 @@ const selectedEntityKey = computed(() => {
   );
   return selected?.key ?? '';
 });
-const selectedFileId = computed(() => fileIdFromSourceId(props.selectedSourceId));
+const selectedFileId = computed(() => {
+  const parsed = parseCatalogSourceId(props.selectedSourceId);
+  return parsed?.kind === 'file' ? parsed.fileId : '';
+});
 
 function selectTab(tab: SourcePanelTab): void {
   activeTab.value = tab;

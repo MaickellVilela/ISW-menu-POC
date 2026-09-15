@@ -272,3 +272,42 @@ export const DATA_SOURCE_FILES: DataSourceFile[] = [
   ]),
   createDataSourceFile('adventureworks-upload', 'Upload for AdventureWorks.csv', entityByKey('sales_order_header')?.fields),
 ];
+
+export type ParsedCatalogSourceId =
+  | { kind: 'entity'; connectionId: string; entityKey: string }
+  | { kind: 'file'; fileId: string };
+
+/** Reads `entity:connectionId:entityKey` or `file:fileId`. */
+export function parseCatalogSourceId(sourceId: string): ParsedCatalogSourceId | null {
+  if (!sourceId) return null;
+  if (sourceId.startsWith('file:')) {
+    const fileId = sourceId.slice('file:'.length);
+    return fileId ? { kind: 'file', fileId } : null;
+  }
+  if (!sourceId.startsWith('entity:')) return null;
+  const rest = sourceId.slice('entity:'.length);
+  const separator = rest.indexOf(':');
+  if (separator <= 0 || separator === rest.length - 1) return null;
+  return {
+    kind: 'entity',
+    connectionId: rest.slice(0, separator),
+    entityKey: rest.slice(separator + 1),
+  };
+}
+
+export function catalogSelectionFromSourceId(sourceId: string): SourceCatalogSelection | null {
+  const parsed = parseCatalogSourceId(sourceId);
+  if (!parsed) return null;
+
+  if (parsed.kind === 'file') {
+    const file = DATA_SOURCE_FILES.find((candidate) => candidate.id === parsed.fileId);
+    if (!file) return null;
+    return { kind: 'file', file, sourceItem: file.sourceItem };
+  }
+
+  const connection = DATA_SOURCE_CONNECTIONS.find((candidate) => candidate.id === parsed.connectionId);
+  if (!connection) return null;
+  const sourceItem = entitiesForConnection(connection).find((entity) => entity.key === parsed.entityKey);
+  if (!sourceItem) return null;
+  return { kind: 'entity', connection, sourceItem };
+}

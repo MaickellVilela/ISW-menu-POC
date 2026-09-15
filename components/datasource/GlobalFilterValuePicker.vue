@@ -18,8 +18,9 @@ const props = withDefaults(
     sourceName: string;
     initialFilter?: GlobalFilter | null;
     editing?: boolean;
+    originLabel?: string;
   }>(),
-  { initialFilter: null, editing: false },
+  { initialFilter: null, editing: false, originLabel: 'Global filters' },
 );
 
 const emit = defineEmits<{
@@ -76,16 +77,19 @@ function apply(): void {
 <template>
   <div class="flex max-h-[min(42rem,calc(100vh-4rem))] flex-col">
     <header class="flex flex-shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-md px-1 py-1 text-[#25262E] transition-colors hover:text-[#6F42A5]"
-        @click="emit('back')"
-      >
-        <svg viewBox="0 0 24 24" class="h-5 w-5 text-[#64748B]" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="m14.5 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span class="text-xl font-semibold">Select values</span>
-      </button>
+      <div class="min-w-0">
+        <p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#6F42A5]">{{ originLabel }}</p>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md px-1 py-1 text-[#25262E] transition-colors hover:text-[#6F42A5]"
+          @click="emit('back')"
+        >
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-[#64748B]" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m14.5 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span class="text-xl font-semibold">Select values</span>
+        </button>
+      </div>
       <button
         type="button"
         class="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#5A6270] transition-colors hover:bg-[#F3F3F4] hover:text-[#25262E]"

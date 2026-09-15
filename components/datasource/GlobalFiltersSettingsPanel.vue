@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { FieldOption } from '~/composables/useDataSourceCanvas';
 import type {
   FilterLogicalOperator,
@@ -15,6 +15,8 @@ const props = defineProps<{
   filterNesting: FilterNesting;
   availableFields: FieldOption[];
   sourceName: string;
+  initialField?: FieldOption | null;
+  initialFilterId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 
 const showFilterModal = ref(false);
 const editingFilter = ref<GlobalFilter | null>(null);
+const pendingField = ref<FieldOption | null>(props.initialField ?? null);
 const nestedDragActive = ref(false);
 const rootDragActive = ref(false);
 
@@ -48,6 +51,25 @@ function openNewFilter(): void {
   showFilterModal.value = true;
 }
 
+watch(
+  () => [props.initialFilterId, props.initialField] as const,
+  ([filterId, field]) => {
+    if (showFilterModal.value) return;
+    if (filterId) {
+      const filter = props.modelValue.find((candidate) => candidate.id === filterId);
+      if (filter) {
+        openExistingFilter(filter);
+        return;
+      }
+    }
+    if (field) {
+      pendingField.value = field;
+      openNewFilter();
+    }
+  },
+  { immediate: true },
+);
+
 function openExistingFilter(filter: GlobalFilter): void {
   editingFilter.value = filter;
   showFilterModal.value = true;
@@ -56,6 +78,7 @@ function openExistingFilter(filter: GlobalFilter): void {
 function closeFilterModal(): void {
   showFilterModal.value = false;
   editingFilter.value = null;
+  pendingField.value = null;
 }
 
 function saveFilter(draft: GlobalFilterDraft): void {
@@ -276,6 +299,8 @@ function updateNestingOperator(event: Event): void {
       :fields="availableFields"
       :source-name="sourceName"
       :filter="editingFilter"
+      :initial-field="editingFilter ? null : pendingField"
+      origin-label="Global filters"
       @cancel="closeFilterModal"
       @save="saveFilter"
     />

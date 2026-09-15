@@ -18,6 +18,7 @@ interface FieldGroup {
 const props = defineProps<{
   fields: FieldOption[];
   sourceName: string;
+  originLabel?: string;
 }>();
 
 const emit = defineEmits<{
@@ -67,7 +68,12 @@ const groups = computed<FieldGroup[]>(() => {
 <template>
   <div class="flex max-h-[min(42rem,calc(100vh-4rem))] flex-col">
     <header class="flex flex-shrink-0 items-center justify-between gap-4 px-6 pb-4 pt-5">
-      <h2 class="text-xl font-semibold text-[#25262E]">Select a field</h2>
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-[#6F42A5]">
+          {{ originLabel ?? 'Global filters' }}
+        </p>
+        <h2 class="mt-1 text-xl font-semibold text-[#25262E]">Select a field</h2>
+      </div>
       <button
         type="button"
         class="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#5A6270] transition-colors hover:bg-[#F3F3F4] hover:text-[#25262E]"

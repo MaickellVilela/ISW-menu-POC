@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
 import {
+  globalFilterShortcut,
+  globalFiltersPageShortcut,
+  performanceFilterShortcut,
+  type CanvasFilterShortcut,
+} from '~/composables/canvasFilterShortcuts';
+import {
   PORT_DY,
   JOIN_RIGHT_PORT_DY,
   OUTPUT_PORT_DY,
@@ -8,7 +14,9 @@ import {
   JOIN_COLLAPSED_RIGHT_DY,
   JOIN_TYPE_LABELS,
   nodeWidth,
+  resolvedTableSourceId,
   type CanvasNode,
+  type FieldDef,
   type FieldOption,
   type JoinType,
 } from '~/composables/useDataSourceCanvas';
@@ -25,6 +33,9 @@ const props = withDefaults(
     rightFields?: FieldOption[];
     activeFields?: string[];
     inflowCount?: number;
+    hasPerformanceFilter?: boolean;
+    filteredFieldIds?: Record<string, string>;
+    hasOutputFilter?: boolean;
   }>(),
   {
     leftLabel: '',
@@ -33,6 +44,9 @@ const props = withDefaults(
     rightFields: () => [],
     activeFields: () => [],
     inflowCount: 0,
+    hasPerformanceFilter: false,
+    filteredFieldIds: () => ({}),
+    hasOutputFilter: false,
   },
 );
 
@@ -49,6 +63,7 @@ const emit = defineEmits<{
   (e: 'add-condition', id: string): void;
   (e: 'update-condition', payload: { id: string; conditionId: string; side: 'leftField' | 'rightField'; value: string }): void;
   (e: 'remove-condition', payload: { id: string; conditionId: string }): void;
+  (e: 'filter-shortcut', shortcut: CanvasFilterShortcut): void;
 }>();
 
 const isJoin = computed(() => props.node.type === 'join');
@@ -111,15 +126,18 @@ function onNameClick(event: MouseEvent): void {
 }
 
 const activeSet = computed(() => new Set(props.activeFields));
+const filteredFieldSet = computed(() => new Set(Object.keys(props.filteredFieldIds)));
+const collapsedVisibleFields = computed(() =>
+  (props.node.fields ?? []).filter(
+    (field) => activeSet.value.has(field.name) || filteredFieldSet.value.has(field.name),
+  ),
+);
 // Only the output (right) dot is pinned to the header centre; the left input
 // dots keep their original positions (stacked when collapsed, aligned with the
 // Left/Right rows when expanded).
 const outputPortDy = OUTPUT_PORT_DY;
 const leftInputDy = computed(() => (props.node.collapsed ? JOIN_COLLAPSED_LEFT_DY : PORT_DY));
 const rightInputDy = computed(() => (props.node.collapsed ? JOIN_COLLAPSED_RIGHT_DY : JOIN_RIGHT_PORT_DY));
-const collapsedActiveFields = computed(() =>
-  (props.node.fields ?? []).filter((field) => activeSet.value.has(field.name)),
-);
 
 const baseStyle = computed(() => ({
   left: `${props.node.x}px`,
@@ -131,12 +149,44 @@ function onSelectType(joinType: JoinType): void {
   emit('set-join-type', { id: props.node.id, joinType });
   typeMenuOpen.value = false;
 }
+
+function isFieldFiltered(field: FieldDef): boolean {
+  return filteredFieldSet.value.has(field.name);
+}
+
+function funnelButtonClass(active: boolean, hover: 'card' | 'field'): string {
+  const hoverClass = hover === 'card'
+    ? 'group-hover/card:opacity-100'
+    : 'group-hover/field:opacity-100';
+  if (active) {
+    return 'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-[#F1ECFA] text-[#3B1770] opacity-100';
+  }
+  return `flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[#3B1770] opacity-0 transition-opacity hover:bg-white ${hoverClass} focus-visible:opacity-100`;
+}
+
+function openPerformanceFilters(): void {
+  emit(
+    'filter-shortcut',
+    performanceFilterShortcut(resolvedTableSourceId(props.node), props.hasPerformanceFilter),
+  );
+}
+
+function openGlobalFilter(field: FieldDef): void {
+  emit(
+    'filter-shortcut',
+    globalFilterShortcut(props.node.label, field, props.filteredFieldIds[field.name]),
+  );
+}
+
+function openOutputFilters(): void {
+  emit('filter-shortcut', globalFiltersPageShortcut());
+}
 </script>
 
 <template>
   <div
     :data-node-id="node.id"
-    class="group absolute cursor-grab select-none rounded-lg border bg-white shadow-sm active:cursor-grabbing"
+    class="group/card absolute cursor-grab select-none rounded-lg border bg-white shadow-sm active:cursor-grabbing"
     :class="[
       isConnectTarget
         ? 'border-[#3B1770] ring-2 ring-[#3B1770]/40'
@@ -152,8 +202,11 @@ function onSelectType(joinType: JoinType): void {
     <!-- ======================= TABLE ======================= -->
     <template v-if="node.type === 'table'">
       <header
-        class="flex h-9 items-center gap-1.5 rounded-t-lg border-b border-[#EEE] bg-[#F7F9FC] pl-2 pr-4"
-        :class="{ 'rounded-b-lg border-b-0': node.collapsed && !collapsedActiveFields.length }"
+        class="flex h-9 items-center gap-1.5 rounded-t-lg border-b pl-2 pr-4"
+        :class="[
+          hasPerformanceFilter ? 'border-[#E4D7F5] bg-[#F1ECFA]' : 'border-[#EEE] bg-[#F7F9FC]',
+          { 'rounded-b-lg border-b-0': node.collapsed && !collapsedVisibleFields.length },
+        ]"
       >
         <button
           type="button"
@@ -195,33 +248,90 @@ function onSelectType(joinType: JoinType): void {
             <span v-if="showOriginalName" class="max-w-full truncate pt-0.5 text-[10px] font-normal text-[#9A9A9A]">{{ node.label }}</span>
           </button>
         </div>
+        <button
+          type="button"
+          :class="funnelButtonClass(hasPerformanceFilter, 'card')"
+          :title="hasPerformanceFilter ? 'Performance filters applied' : 'Performance filters'"
+          :aria-label="hasPerformanceFilter ? 'Open applied performance filters' : 'Open performance filters'"
+          :aria-pressed="hasPerformanceFilter"
+          @pointerdown.stop
+          @click.stop="openPerformanceFilters"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" />
+          </svg>
+        </button>
         <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ (node.fields ?? []).length }}</span>
       </header>
 
       <!-- Full, scrollable field list -->
-      <ul v-if="!node.collapsed" class="max-h-44 overflow-y-auto px-2 py-1.5">
+      <ul v-if="!node.collapsed" class="max-h-44 overflow-x-hidden overflow-y-auto px-2 py-1.5">
         <li
           v-for="field in node.fields"
           :key="field.name"
-          class="flex items-center gap-1.5 rounded px-1 py-0.5 text-xs"
-          :class="activeSet.has(field.name) ? 'bg-[#F1ECFA]' : ''"
+          class="group/field flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs"
+          :class="
+            activeSet.has(field.name) || isFieldFiltered(field)
+              ? 'bg-[#F1ECFA]'
+              : ''
+          "
         >
-          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="activeSet.has(field.name) ? 'bg-[#3B1770]' : 'bg-[#C4C4C4]'" />
-          <span class="flex-1 truncate" :class="activeSet.has(field.name) ? 'font-medium text-[#3B1770]' : 'text-[#5A5A5A]'">{{ field.name }}</span>
-          <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
+          <span
+            class="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+            :class="activeSet.has(field.name) || isFieldFiltered(field) ? 'bg-[#3B1770]' : 'bg-[#C4C4C4]'"
+          />
+          <span
+            class="min-w-0 flex-1 truncate"
+            :class="
+              activeSet.has(field.name) || isFieldFiltered(field)
+                ? 'font-medium text-[#3B1770]'
+                : 'text-[#5A5A5A]'
+            "
+          >{{ field.name }}</span>
+          <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+            <button
+              type="button"
+              :class="funnelButtonClass(isFieldFiltered(field), 'field')"
+              :title="isFieldFiltered(field) ? `Global filter applied · ${field.name}` : `Global filters · ${field.name}`"
+              :aria-label="isFieldFiltered(field) ? `Open applied global filter for ${field.name}` : `Open global filters for ${field.name}`"
+              :aria-pressed="isFieldFiltered(field)"
+              @pointerdown.stop
+              @click.stop="openGlobalFilter(field)"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </span>
+          <span class="w-14 flex-shrink-0 text-right text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
         </li>
       </ul>
 
       <!-- Collapsed: show only fields used in joins -->
-      <ul v-else-if="collapsedActiveFields.length" class="px-2 py-1.5">
+      <ul v-else-if="collapsedVisibleFields.length" class="px-2 py-1.5">
         <li
-          v-for="field in collapsedActiveFields"
+          v-for="field in collapsedVisibleFields"
           :key="field.name"
-          class="flex items-center gap-1.5 px-1 py-0.5 text-xs"
+          class="group/field flex min-w-0 items-center gap-1.5 px-1 py-0.5 text-xs"
         >
           <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" />
-          <span class="flex-1 truncate font-medium text-[#3B1770]">{{ field.name }}</span>
-          <span class="flex-shrink-0 text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
+          <span class="min-w-0 flex-1 truncate font-medium text-[#3B1770]">{{ field.name }}</span>
+          <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+            <button
+              type="button"
+              :class="funnelButtonClass(isFieldFiltered(field), 'field')"
+              :title="isFieldFiltered(field) ? `Global filter applied · ${field.name}` : `Global filters · ${field.name}`"
+              :aria-label="isFieldFiltered(field) ? `Open applied global filter for ${field.name}` : `Open global filters for ${field.name}`"
+              :aria-pressed="isFieldFiltered(field)"
+              @pointerdown.stop
+              @click.stop="openGlobalFilter(field)"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </span>
+          <span class="w-14 flex-shrink-0 text-right text-[10px] text-[#9A9A9A]">{{ field.type }}</span>
         </li>
       </ul>
     </template>
@@ -388,6 +498,24 @@ function onSelectType(joinType: JoinType): void {
           <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" />
         </svg>
         <span class="flex-1 text-sm font-semibold">Output</span>
+        <button
+          type="button"
+          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded"
+          :class="
+            hasOutputFilter
+              ? 'bg-white/15 text-white opacity-100'
+              : 'text-white/80 opacity-0 transition-opacity hover:bg-white/10 group-hover/card:opacity-100 focus-visible:opacity-100'
+          "
+          :title="hasOutputFilter ? 'Global filters applied to this output' : 'Global filters'"
+          :aria-label="hasOutputFilter ? 'Open applied global filters' : 'Open global filters'"
+          :aria-pressed="hasOutputFilter"
+          @pointerdown.stop
+          @click.stop="openOutputFilters"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" />
+          </svg>
+        </button>
       </header>
       <div class="flex items-start justify-between gap-2 px-3 py-2 text-xs text-[#6B6B6B]">
         <div class="min-w-0">
@@ -419,7 +547,7 @@ function onSelectType(joinType: JoinType): void {
     <button
       v-if="!isOutput"
       type="button"
-      class="absolute -right-2 -top-2 hidden h-5 w-5 items-center justify-center rounded-full bg-[#25262E] text-white text-xs leading-none hover:bg-[#3B1770] group-hover:flex"
+      class="absolute -right-2 -top-2 hidden h-5 w-5 items-center justify-center rounded-full bg-[#25262E] text-white text-xs leading-none hover:bg-[#3B1770] group-hover/card:flex"
       title="Remove"
       @pointerdown.stop
       @click.stop="emit('remove', node.id)"

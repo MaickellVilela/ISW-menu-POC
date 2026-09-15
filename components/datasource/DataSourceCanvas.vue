@@ -11,6 +11,7 @@ import {
   findSuggestedOutputSource,
   nodeWidth,
   nodeSize,
+  resolvedTableSourceId,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
@@ -21,6 +22,14 @@ import CanvasNode from './CanvasNode.vue';
 import ConnectionLines from './ConnectionLines.vue';
 import CanvasHelp from './CanvasHelp.vue';
 import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
+import type { CanvasFilterShortcut } from '~/composables/canvasFilterShortcuts';
+import {
+  filteredFieldIdsForTable,
+  outputHasGlobalFilters,
+  readCanvasFilterMarks,
+  tableHasPerformanceFilter,
+  type CanvasFilterMarkSnapshot,
+} from '~/composables/canvasFilterMarks';
 
 const SURFACE_WIDTH = 3600;
 const SURFACE_HEIGHT = 2400;
@@ -57,6 +66,7 @@ const {
 
 const emit = defineEmits<{
   'update:usedTableIdentities': [identities: string[]];
+  'open-filter-shortcut': [shortcut: CanvasFilterShortcut];
 }>();
 
 const usedTableIdentities = computed(() => canvasTableIdentities(nodes.value));
@@ -64,6 +74,36 @@ const usedTableIdentities = computed(() => canvasTableIdentities(nodes.value));
 watch(usedTableIdentities, (identities) => {
   emit('update:usedTableIdentities', identities);
 }, { immediate: true });
+
+const route = useRoute();
+const filterMarks = ref<CanvasFilterMarkSnapshot>(readCanvasFilterMarks());
+
+function refreshFilterMarks(): void {
+  filterMarks.value = readCanvasFilterMarks();
+}
+
+watch(
+  () => route.query.configure,
+  (configure) => {
+    if (!configure) refreshFilterMarks();
+  },
+  { immediate: true },
+);
+
+function hasPerformanceFilter(node: CanvasNodeModel): boolean {
+  return tableHasPerformanceFilter(
+    resolvedTableSourceId(node),
+    filterMarks.value.performanceProviderId,
+  );
+}
+
+function filteredFieldIds(node: CanvasNodeModel): Record<string, string> {
+  return filteredFieldIdsForTable(
+    node.label,
+    node.fields ?? [],
+    filterMarks.value.globalFilters,
+  );
+}
 
 const surface = ref<HTMLElement | null>(null);
 const viewport = ref<HTMLElement | null>(null);
@@ -526,6 +566,9 @@ onBeforeUnmount(() => {
           :right-fields="fieldsFor(node.inputs?.[1])"
           :active-fields="activeFieldsFor(node)"
           :inflow-count="node.type === 'output' ? fieldsFor(node.inputs?.[0]).length : 0"
+          :has-performance-filter="hasPerformanceFilter(node)"
+          :filtered-field-ids="filteredFieldIds(node)"
+          :has-output-filter="outputHasGlobalFilters(filterMarks.globalFilters)"
           @start-move="onStartMove"
           @start-connect="onStartConnect"
           @start-resize="onStartResize"
@@ -538,6 +581,7 @@ onBeforeUnmount(() => {
           @add-condition="addCondition"
           @update-condition="updateCondition($event.id, $event.conditionId, $event.side, $event.value)"
           @remove-condition="removeCondition($event.id, $event.conditionId)"
+          @filter-shortcut="emit('open-filter-shortcut', $event)"
         />
       </div>
 

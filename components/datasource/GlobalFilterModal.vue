@@ -17,8 +17,10 @@ const props = withDefaults(
     fields: FieldOption[];
     sourceName: string;
     filter?: GlobalFilter | null;
+    initialField?: FieldOption | null;
+    originLabel?: string;
   }>(),
-  { filter: null },
+  { filter: null, initialField: null, originLabel: 'Global filters' },
 );
 
 const emit = defineEmits<{
@@ -51,12 +53,19 @@ function resetFlow(): void {
     return;
   }
 
+  if (props.initialField) {
+    selectedField.value = props.fields.find((field) => field.value === props.initialField?.value)
+      ?? props.initialField;
+    step.value = 'values';
+    return;
+  }
+
   selectedField.value = null;
   step.value = 'field';
 }
 
 watch(
-  () => [props.open, props.filter] as const,
+  () => [props.open, props.filter, props.initialField] as const,
   ([open]) => {
     if (open) resetFlow();
   },
@@ -97,6 +106,7 @@ function save(filter: GlobalFilterDraft): void {
           v-if="step === 'field'"
           :fields="fields"
           :source-name="sourceName"
+          :origin-label="originLabel"
           @cancel="emit('cancel')"
           @select="selectField"
         />
@@ -108,6 +118,7 @@ function save(filter: GlobalFilterDraft): void {
           :source-name="sourceName"
           :initial-filter="selectedField.value === filter?.field ? filter : null"
           :editing="Boolean(filter)"
+          :origin-label="originLabel"
           @apply="save"
           @back="returnToFields"
           @cancel="emit('cancel')"
