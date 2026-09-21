@@ -196,6 +196,27 @@ export function isJoinIncomplete(node: CanvasNode): boolean {
   return conditions.some((condition) => !isJoinConditionComplete(condition));
 }
 
+export function isJoinFieldBlank(value: string | undefined): boolean {
+  return !value?.trim();
+}
+
+export function incompleteJoinNodeIds(nodes: CanvasNode[]): string[] {
+  return nodes.filter(isJoinIncomplete).map((node) => node.id);
+}
+
+/** Expands incomplete joins so matching columns are visible after a failed save. */
+export function revealIncompleteJoins(nodes: CanvasNode[]): void {
+  for (const node of nodes) {
+    if (isJoinIncomplete(node)) node.collapsed = false;
+  }
+}
+
+/** Drops save-error ids once those joins have matching columns. */
+export function pruneJoinSaveErrorIds(errorIds: readonly string[], nodes: CanvasNode[]): string[] {
+  const incomplete = new Set(incompleteJoinNodeIds(nodes));
+  return errorIds.filter((id) => incomplete.has(id));
+}
+
 export function createOutputNode(x: number, y: number): CanvasNode {
   return { id: OUTPUT_NODE_ID, type: 'output', label: 'Output', x, y, inputs: [] };
 }

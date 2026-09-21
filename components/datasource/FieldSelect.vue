@@ -8,8 +8,9 @@ const props = withDefaults(
     options: FieldOption[];
     placeholder?: string;
     accent?: string;
+    invalid?: boolean;
   }>(),
-  { placeholder: 'Select field', accent: '#3B6BB5' },
+  { placeholder: 'Select field', accent: '#3B6BB5', invalid: false },
 );
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
@@ -19,6 +20,12 @@ const query = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
 
 const selected = computed(() => props.options.find((option) => option.value === props.modelValue));
+
+const triggerClass = computed(() => {
+  if (props.invalid) return 'border-[#C81E1E] bg-[#FEF3F2] ring-1 ring-[#C81E1E]/40';
+  if (props.open) return 'border-[#3B1770] bg-white ring-1 ring-[#3B1770]/30';
+  return 'border-[#E2E2E2] bg-white';
+});
 
 const displayLabel = computed(() => {
   if (selected.value) return selected.value.name;
@@ -52,10 +59,11 @@ function choose(option: FieldOption): void {
   <div class="relative min-w-0" @pointerdown.stop @click.stop>
     <button
       type="button"
-      class="flex w-full items-center gap-1 rounded border bg-white px-1.5 py-1 text-[11px]"
-      :class="open ? 'border-[#3B1770] ring-1 ring-[#3B1770]/30' : 'border-[#E2E2E2]'"
+      class="flex w-full items-center gap-1 rounded border px-1.5 py-1 text-[11px]"
+      :class="triggerClass"
       :style="{ color: accent }"
       :title="selected ? selected.value : placeholder"
+      :aria-invalid="invalid ? true : undefined"
       @click="toggle"
     >
       <span class="flex-1 truncate text-left" :class="{ 'text-[#9A9A9A]': !displayLabel }">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import {
   globalFilterShortcut,
   globalFiltersPageShortcut,
@@ -16,6 +16,7 @@ import {
   nodeWidth,
   resolvedTableSourceId,
   isJoinIncomplete,
+  isJoinFieldBlank,
   type CanvasNode,
   type FieldDef,
   type FieldOption,
@@ -38,6 +39,8 @@ const props = withDefaults(
     filteredFieldIds?: Record<string, string>;
     hasOutputFilter?: boolean;
     selected?: boolean;
+    saveError?: boolean;
+    shakeToken?: number;
   }>(),
   {
     leftLabel: '',
@@ -50,6 +53,8 @@ const props = withDefaults(
     filteredFieldIds: () => ({}),
     hasOutputFilter: false,
     selected: false,
+    saveError: false,
+    shakeToken: 0,
   },
 );
 
@@ -72,6 +77,23 @@ const emit = defineEmits<{
 const isJoin = computed(() => props.node.type === 'join');
 const isOutput = computed(() => props.node.type === 'output');
 const joinNeedsMatch = computed(() => isJoinIncomplete(props.node));
+const joinSaveError = computed(() => props.saveError && joinNeedsMatch.value);
+const shaking = ref(false);
+
+watch(
+  () => props.shakeToken,
+  async (token, previous) => {
+    if (!joinSaveError.value || token === previous) return;
+    shaking.value = false;
+    await nextTick();
+    shaking.value = true;
+  },
+);
+
+function onShakeEnd(event: AnimationEvent): void {
+  if (event.target !== event.currentTarget) return;
+  shaking.value = false;
+}
 const joinTypes: JoinType[] = ['inner', 'left', 'full'];
 const typeMenuOpen = ref(false);
 
@@ -192,8 +214,11 @@ function openOutputFilters(): void {
     :data-node-id="node.id"
     class="group/card absolute cursor-grab select-none rounded-lg border bg-white shadow-sm active:cursor-grabbing"
     :class="[
+      { 'join-save-shake': shaking },
       isConnectTarget
         ? 'border-[#3B1770] ring-2 ring-[#3B1770]/40'
+        : joinSaveError
+          ? 'border-[#C81E1E] ring-2 ring-[#C81E1E]/30'
         : selected
           ? 'border-[#3B1770] ring-2 ring-[#3B1770]/25'
         : isOutput
@@ -205,6 +230,8 @@ function openOutputFilters(): void {
               : 'border-[#D8D8D8]',
     ]"
     :style="baseStyle"
+    :aria-invalid="joinSaveError ? true : undefined"
+    @animationend="onShakeEnd"
     @pointerdown="emit('start-move', { id: node.id, event: $event })"
   >
     <!-- ======================= TABLE ======================= -->
@@ -349,7 +376,11 @@ function openOutputFilters(): void {
       <header
         class="relative flex h-9 items-center gap-1 rounded-t-lg border-b pl-1.5 pr-2"
         :class="[
-          joinNeedsMatch ? 'border-[#F0D4A8] bg-[#FFF6E8]' : 'border-[#EEE] bg-[#F5F1FC]',
+          joinSaveError
+            ? 'border-[#F0C7C7] bg-[#FEF3F2]'
+            : joinNeedsMatch
+              ? 'border-[#F0D4A8] bg-[#FFF6E8]'
+              : 'border-[#EEE] bg-[#F5F1FC]',
           { 'rounded-b-lg border-b-0': node.collapsed },
         ]"
       >
@@ -391,7 +422,8 @@ function openOutputFilters(): void {
         <!-- Join type (right) -->
         <span
           v-if="joinNeedsMatch"
-          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#C9780A] text-[10px] font-bold text-white"
+          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+          :class="joinSaveError ? 'bg-[#C81E1E]' : 'bg-[#C9780A]'"
           title="Specify matching columns"
           aria-label="Join needs matching columns"
         >
@@ -453,7 +485,8 @@ function openOutputFilters(): void {
       <div v-if="!node.collapsed" class="border-t border-[#EEE] px-2.5 py-2">
         <p
           v-if="joinNeedsMatch"
-          class="mb-2 rounded-md bg-[#FFF6E8] px-2 py-1 text-[11px] font-medium leading-snug text-[#8A4B08]"
+          class="mb-2 rounded-md px-2 py-1 text-[11px] font-medium leading-snug"
+          :class="joinSaveError ? 'bg-[#FEF3F2] text-[#B42318]' : 'bg-[#FFF6E8] text-[#8A4B08]'"
         >
           Specify matching columns
         </p>
@@ -469,6 +502,7 @@ function openOutputFilters(): void {
             :options="leftFields"
             placeholder="Left field…"
             accent="#3B6BB5"
+            :invalid="joinSaveError && isJoinFieldBlank(condition.leftField)"
             @update:model-value="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'leftField', value: $event })"
           />
           <span class="text-[#9A9A9A]">=</span>
@@ -478,6 +512,7 @@ function openOutputFilters(): void {
             :options="rightFields"
             placeholder="Right field…"
             accent="#8B5CF6"
+            :invalid="joinSaveError && isJoinFieldBlank(condition.rightField)"
             @update:model-value="emit('update-condition', { id: node.id, conditionId: condition.id, side: 'rightField', value: $event })"
           />
           <button
@@ -610,3 +645,28 @@ function openOutputFilters(): void {
     />
   </div>
 </template>
+
+<style scoped>
+.join-save-shake {
+  animation: join-save-shake 0.5s ease-in-out;
+}
+
+@keyframes join-save-shake {
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  20% {
+    transform: translateX(-8px) scale(1.03);
+  }
+  40% {
+    transform: translateX(8px) scale(1.03);
+  }
+  60% {
+    transform: translateX(-5px) scale(1.02);
+  }
+  80% {
+    transform: translateX(5px) scale(1);
+  }
+}
+</style>

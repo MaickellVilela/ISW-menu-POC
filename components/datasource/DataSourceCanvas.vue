@@ -15,6 +15,9 @@ import {
   outputPreviewForNode,
   previewToCsv,
   canvasSourceDefinition,
+  incompleteJoinNodeIds,
+  revealIncompleteJoins,
+  pruneJoinSaveErrorIds,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
@@ -137,7 +140,18 @@ const { definition: sourceDefinition, load: loadSourceDefinition, save: saveSour
 const previewNodeId = ref<string | undefined>();
 const copyStatus = ref('');
 const saveStatus = ref('');
+const joinSaveErrorIds = ref<string[]>([]);
+const joinShakeNonce = ref(0);
 const showClearConfirm = ref(false);
+
+watch(
+  nodes,
+  () => {
+    if (joinSaveErrorIds.value.length === 0) return;
+    joinSaveErrorIds.value = pruneJoinSaveErrorIds(joinSaveErrorIds.value, nodes.value);
+  },
+  { deep: true },
+);
 // Reflects the real cards: compact only when every card is collapsed, else
 // expanded. Since cards are created expanded, this defaults to 'expanded'.
 const viewMode = computed<'expanded' | 'compact'>(() => {
@@ -322,6 +336,17 @@ async function fitToView(): Promise<void> {
   vp.scrollTop = centerY * zoom.value - vp.clientHeight / 2;
 }
 
+function scrollNodeIntoView(node: CanvasNodeModel): void {
+  const vp = viewport.value;
+  if (!vp) return;
+  const { width, height } = nodeSize(node);
+  vp.scrollTo({
+    left: Math.max(0, node.x * zoom.value - (vp.clientWidth - width * zoom.value) / 2),
+    top: Math.max(0, node.y * zoom.value - (vp.clientHeight - height * zoom.value) / 2),
+    behavior: 'smooth',
+  });
+}
+
 /* ------------------------------ coordinates ------------------------------ */
 
 function toSurfaceCoords(event: { clientX: number; clientY: number }): Point {
@@ -495,6 +520,17 @@ function applySourceDefinition(next: SourceDefinition): void {
 }
 
 function saveSource(): void {
+  const incompleteIds = incompleteJoinNodeIds(nodes.value);
+  if (incompleteIds.length > 0) {
+    revealIncompleteJoins(nodes.value);
+    joinSaveErrorIds.value = incompleteIds;
+    joinShakeNonce.value += 1;
+    const first = findNode(incompleteIds[0] ?? '');
+    if (first) void nextTick(() => scrollNodeIntoView(first));
+    return;
+  }
+
+  joinSaveErrorIds.value = [];
   emit('save');
   saveStatus.value = 'Saved';
   window.setTimeout(() => {
@@ -777,6 +813,8 @@ defineExpose({
           :filtered-field-ids="filteredFieldIds(node)"
           :has-output-filter="outputHasGlobalFilters(filterMarks.globalFilters)"
           :selected="selectedNodeId === node.id"
+          :save-error="joinSaveErrorIds.includes(node.id)"
+          :shake-token="joinShakeNonce"
           @start-move="onStartMove"
           @start-connect="onStartConnect"
           @start-resize="onStartResize"
