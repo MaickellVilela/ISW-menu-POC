@@ -9,6 +9,19 @@ npm install
 npm run dev
 ```
 
+The canvas prototype is at [http://localhost:3000/data-sources](http://localhost:3000/data-sources). Share that path (not the app root) so reviewers land on the join canvas.
+
+To publish a static build:
+
+```bash
+npm run generate
+npm run preview
+```
+
+Then send the updated `/data-sources` URL after the generate finishes.
+
+## Storybook (design system)
+
 ## Storybook (design system)
 
 ```bash

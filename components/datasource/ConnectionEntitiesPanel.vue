@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import {
   entityCatalogSelectionId,
   filterSourceItems,
+  schemaNameMatches,
   type DataSourceConnection,
 } from '~/composables/dataSourceCatalog';
 import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
@@ -17,8 +18,19 @@ const props = withDefaults(
     selectedKey?: string;
     searchQuery?: string;
     usedTableIdentities?: string[];
+    schemaName?: string;
+    backLabel?: string;
+    catalogRevision?: number;
   }>(),
-  { mode: 'drag', selectedKey: '', searchQuery: '', usedTableIdentities: () => [] },
+  {
+    mode: 'drag',
+    selectedKey: '',
+    searchQuery: '',
+    usedTableIdentities: () => [],
+    schemaName: '',
+    backLabel: 'Connections',
+    catalogRevision: 0,
+  },
 );
 
 const emit = defineEmits<{
@@ -27,9 +39,13 @@ const emit = defineEmits<{
   'update:searchQuery': [query: string];
 }>();
 
-const visibleEntities = computed(() =>
-  filterSourceItems(props.entities, props.searchQuery),
-);
+const visibleEntities = computed(() => {
+  void props.catalogRevision;
+  if (props.schemaName && schemaNameMatches({ name: props.schemaName, entityKeys: [] }, props.searchQuery)) {
+    return props.entities;
+  }
+  return filterSourceItems(props.entities, props.searchQuery);
+});
 
 function sourceIdFor(entity: SourceItem): string {
   return entityCatalogSelectionId(props.connection.id, entity.key);
@@ -47,7 +63,7 @@ function sourceIdFor(entity: SourceItem): string {
         <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
           <path d="m14.5 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        Connections
+        {{ backLabel }}
       </button>
 
       <div class="mt-2 flex min-w-0 items-center gap-2.5">
@@ -59,6 +75,7 @@ function sourceIdFor(entity: SourceItem): string {
             {{ connection.name }}
           </h2>
           <p class="text-[11px] text-[#7A7A7A]">
+            <template v-if="schemaName">{{ schemaName }} · </template>
             {{ entities.length }} entit{{ entities.length === 1 ? 'y' : 'ies' }}
           </p>
         </span>
@@ -106,6 +123,7 @@ function sourceIdFor(entity: SourceItem): string {
         :source-id="sourceIdFor(entity)"
         :in-use="isCatalogSourceOnCanvas(usedTableIdentities, sourceIdFor(entity))"
         :search-query="searchQuery"
+        :detail="entity.description === 'Custom SQL' ? 'Custom SQL' : ''"
         @select="emit('select', entity)"
       />
     </ul>

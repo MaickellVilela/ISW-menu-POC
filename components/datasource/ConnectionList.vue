@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import {
   connectionHasUsedTable,
-  matchingEntityCaption,
+  matchingCatalogCaption,
   searchConnections,
   type DataSourceConnection,
 } from '~/composables/dataSourceCatalog';
@@ -14,8 +14,9 @@ const props = withDefaults(
     connections: DataSourceConnection[];
     searchQuery: string;
     usedTableIdentities?: string[];
+    catalogRevision?: number;
   }>(),
-  { usedTableIdentities: () => [] },
+  { usedTableIdentities: () => [], catalogRevision: 0 },
 );
 
 const emit = defineEmits<{
@@ -23,13 +24,14 @@ const emit = defineEmits<{
   'update:searchQuery': [query: string];
 }>();
 
-const visibleMatches = computed(() =>
-  searchConnections(props.connections, props.searchQuery).map((match) => ({
+const visibleMatches = computed(() => {
+  void props.catalogRevision;
+  return searchConnections(props.connections, props.searchQuery).map((match) => ({
     ...match,
-    caption: matchingEntityCaption(match.matchingEntities),
+    caption: matchingCatalogCaption(match),
     inUse: connectionHasUsedTable(match.connection, props.usedTableIdentities),
-  })),
-);
+  }));
+});
 </script>
 
 <template>

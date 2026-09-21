@@ -61,6 +61,8 @@ export interface CanvasNode {
   sourceKey?: string;
   /** Stable catalog id, e.g. `entity:managed:orders` or `file:orders-csv`. */
   sourceId?: string;
+  /** When false, entity-level result cache is off. Unset means off. */
+  entityCacheEnabled?: boolean;
 }
 
 export interface Point {
@@ -182,6 +184,18 @@ export function createJoinNode(
   };
 }
 
+export function isJoinConditionComplete(condition: JoinCondition): boolean {
+  return Boolean(condition.leftField.trim() && condition.rightField.trim());
+}
+
+/** True when a join still needs matching columns. Highlight immediately — not an error, not delayed until output. */
+export function isJoinIncomplete(node: CanvasNode): boolean {
+  if (node.type !== 'join') return false;
+  const conditions = node.conditions ?? [];
+  if (conditions.length === 0) return true;
+  return conditions.some((condition) => !isJoinConditionComplete(condition));
+}
+
 export function createOutputNode(x: number, y: number): CanvasNode {
   return { id: OUTPUT_NODE_ID, type: 'output', label: 'Output', x, y, inputs: [] };
 }
@@ -238,6 +252,7 @@ const FIELD_LIST_PADDING = 12;
 const FIELD_LIST_MAX_HEIGHT = 176;
 const JOIN_INPUTS_HEIGHT = 48;
 const JOIN_CONDITIONS_CHROME = 56;
+const JOIN_INCOMPLETE_BANNER_HEIGHT = 28;
 const CONDITION_ROW_HEIGHT = 34;
 const OUTPUT_BODY_HEIGHT = 48;
 
@@ -276,8 +291,14 @@ export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
     return { width, height: HEADER_HEIGHT };
   }
   const conditionCount = node.conditions?.length ?? 0;
+  const incompleteBanner = isJoinIncomplete(node) ? JOIN_INCOMPLETE_BANNER_HEIGHT : 0;
   const height =
-    HEADER_HEIGHT + CARD_BORDER + JOIN_INPUTS_HEIGHT + JOIN_CONDITIONS_CHROME + conditionCount * CONDITION_ROW_HEIGHT;
+    HEADER_HEIGHT
+    + CARD_BORDER
+    + JOIN_INPUTS_HEIGHT
+    + JOIN_CONDITIONS_CHROME
+    + incompleteBanner
+    + conditionCount * CONDITION_ROW_HEIGHT;
   return { width, height };
 }
 
@@ -489,6 +510,127 @@ export function fieldsFromCanvasNodes(nodes: CanvasNode[]): FieldOption[] {
   return nodes
     .filter((node) => node.type === 'table')
     .flatMap((node) => collectSourceFields(nodes, node.id));
+}
+
+export interface OutputPreview {
+  columns: string[];
+  rows: Record<string, string>[];
+  sourceLabel: string;
+}
+
+function sampleOutputCell(field: FieldOption, index: number): string {
+  const type = field.type.toLowerCase();
+  if (type === 'number') return String((index + 1) * 12);
+  if (type === 'time' || type === 'date') return `2026-01-${String(index + 1).padStart(2, '0')}`;
+  return `${field.name}-${index + 1}`;
+}
+
+export function previewFields(fields: FieldOption[], sourceLabel: string, limit = 10): OutputPreview {
+  const columns = fields.map((field) => field.value);
+  const rows = Array.from({ length: Math.min(20, Math.max(1, limit)) }, (_, index) =>
+    Object.fromEntries(fields.map((field) => [field.value, sampleOutputCell(field, index)])),
+  );
+  return { columns, rows, sourceLabel };
+}
+
+export function outputPreviewForNode(nodes: CanvasNode[], nodeId?: string, limit = 10): OutputPreview {
+  if (nodeId) {
+    const node = nodes.find((item) => item.id === nodeId);
+    const fields = node?.type === 'output'
+      ? fieldsFromCanvasNodes(nodes)
+      : collectSourceFields(nodes, nodeId);
+    const label = node?.type === 'output'
+      ? 'Output'
+      : (node?.customName?.trim() || node?.label || 'Preview');
+    return previewFields(fields, label, limit);
+  }
+  const output = nodes.find(isOutputNode);
+  const source = output?.inputs?.[0]
+    ? nodes.find((item) => item.id === output.inputs?.[0])
+    : undefined;
+  const label = source ? (source.customName?.trim() || source.label) : 'Canvas tables';
+  return previewFields(fieldsFromCanvasNodes(nodes), `Output · ${label}`, limit);
+}
+
+export function csvCell(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+export function previewToCsv(preview: OutputPreview): string {
+  const header = preview.columns.map(csvCell).join(',');
+  const lines = preview.rows.map((row) =>
+    preview.columns.map((column) => csvCell(row[column] ?? '')).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function canvasSourceDefinition(nodes: CanvasNode[]): string {
+  const definition = nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    name: node.customName?.trim() || node.label,
+    fields: (node.fields ?? []).map((field) => field.name),
+    inputs: node.inputs ?? [],
+    joinType: node.joinType,
+    conditions: (node.conditions ?? []).map((condition) => ({
+      left: condition.leftField,
+      right: condition.rightField,
+    })),
+    sourceId: node.sourceId ?? null,
+  }));
+  return JSON.stringify(definition, null, 2);
+}
+
+/** Rewrites a join field value when its source table is renamed. */
+export function replaceQualifiedFieldPrefix(value: string, fromLabel: string, toLabel: string): string {
+  if (!fromLabel || fromLabel === toLabel || !value.startsWith(`${fromLabel}.`)) return value;
+  return `${toLabel}.${value.slice(fromLabel.length + 1)}`;
+}
+
+export interface TableRebindPatch {
+  label: string;
+  sourceKey: string;
+  sourceId: string;
+  customName?: string;
+  fields: FieldDef[];
+  entityCacheEnabled: boolean;
+}
+
+/** Rebinds a table to another catalog entity and keeps join conditions aligned. */
+export function rebindTableNode(nodes: CanvasNode[], nodeId: string, patch: TableRebindPatch): void {
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (!node || node.type !== 'table') return;
+
+  const previousLabel = node.label;
+  node.label = patch.label;
+  node.sourceKey = patch.sourceKey;
+  node.sourceId = patch.sourceId;
+  node.customName = patch.customName?.trim() && patch.customName.trim() !== patch.label
+    ? patch.customName.trim()
+    : undefined;
+  node.fields = patch.fields.map((field) => ({ ...field }));
+  node.entityCacheEnabled = patch.entityCacheEnabled;
+
+  if (previousLabel !== patch.label) {
+    for (const join of nodes) {
+      if (join.type !== 'join') continue;
+      for (const condition of join.conditions ?? []) {
+        condition.leftField = replaceQualifiedFieldPrefix(condition.leftField, previousLabel, patch.label);
+        condition.rightField = replaceQualifiedFieldPrefix(condition.rightField, previousLabel, patch.label);
+      }
+    }
+  }
+
+  const allowed = new Set((node.fields ?? []).map((field) => `${node.label}.${field.name}`));
+  for (const join of nodes) {
+    if (join.type !== 'join' || !join.inputs?.includes(nodeId)) continue;
+    const isLeft = join.inputs[0] === nodeId;
+    for (const condition of join.conditions ?? []) {
+      const side = isLeft ? 'leftField' : 'rightField';
+      if (condition[side] && !allowed.has(condition[side])) condition[side] = '';
+    }
+  }
 }
 
 /** Catalog id for a canvas table, inferring Managed when older layouts omitted `sourceId`. */
@@ -820,6 +962,10 @@ export function useDataSourceCanvas() {
     node.customName = trimmed ? trimmed : undefined;
   }
 
+  function replaceTable(id: string, patch: TableRebindPatch): void {
+    rebindTableNode(nodes.value, id, patch);
+  }
+
   /** Sets a card's width, clamped to the allowed range. */
   function setNodeWidth(id: string, width: number): void {
     const node = findNode(id);
@@ -902,6 +1048,7 @@ export function useDataSourceCanvas() {
     toggleCollapse: committing(toggleCollapse),
     setAllCollapsed: committing(setAllCollapsed),
     setNodeName: committing(setNodeName),
+    replaceTable: committing(replaceTable),
     removeNode: committing(removeNode),
     clear: committing(clear),
     loadPreset: committing(loadPreset),

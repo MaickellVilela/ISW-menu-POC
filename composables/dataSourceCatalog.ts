@@ -1,5 +1,14 @@
 import type { ConnectorKey } from './connectorIcons';
-import { connectionEntityKeys, entitiesForConnectionId, entityByKey } from './dataSourceEntities';
+import {
+  connectionEntityKeys,
+  connectionHasSchemas,
+  entitiesForConnectionId,
+  entitiesForSchema,
+  entityByKey,
+  schemaForEntityKey,
+  schemasForConnectionId,
+  type ConnectionSchema,
+} from './dataSourceEntities';
 import type { FieldDef, SourceItem } from './useDataSourceCanvas';
 
 export interface DataSourceConnection {
@@ -88,19 +97,147 @@ function cloneEntity(item: SourceItem): SourceItem {
   return { ...item, fields: cloneFields(item.fields) };
 }
 
+export interface CustomSqlQuery {
+  connectionId: string;
+  schemaName: string;
+  sql: string;
+  sourceItem: SourceItem;
+}
+
+const customSqlQueries: CustomSqlQuery[] = [];
+
+const DEFAULT_CUSTOM_SQL_FIELDS: FieldDef[] = [
+  { name: 'id', type: 'Number' },
+  { name: 'value', type: 'Attribute' },
+];
+
+function inferSqlFieldType(name: string): FieldDef['type'] {
+  const lower = name.toLowerCase();
+  if (/(^id$|_id$|count|amount|qty|quantity|price|total)$/.test(lower)) return 'Number';
+  if (/(date|time|_at)$/.test(lower)) return 'Time';
+  return 'Attribute';
+}
+
+function sqlColumnName(token: string): string | null {
+  const asMatch = token.match(/\bas\s+("([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][\w]*))$/i);
+  if (asMatch) return asMatch[2] ?? asMatch[3] ?? asMatch[4] ?? asMatch[5] ?? null;
+  const simple = token.match(/("([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][\w]*))$/);
+  return simple?.[2] ?? simple?.[3] ?? simple?.[4] ?? simple?.[5] ?? null;
+}
+
+/** Reads column names from a simple `SELECT a, b FROM ...` statement. */
+export function fieldsFromCustomSql(sql: string): FieldDef[] {
+  const normalized = sql.replace(/\s+/g, ' ').trim();
+  const match = normalized.match(/^select\s+(.+?)\s+from\s+/i);
+  if (!match) return DEFAULT_CUSTOM_SQL_FIELDS.map((field) => ({ ...field }));
+
+  const list = match[1].trim();
+  if (!list || list === '*') return DEFAULT_CUSTOM_SQL_FIELDS.map((field) => ({ ...field }));
+
+  const columns = list.split(',').flatMap((part) => {
+    const token = part.trim();
+    if (!token || token === '*') return [];
+    const name = sqlColumnName(token);
+    return name ? [{ name, type: inferSqlFieldType(name) }] : [];
+  });
+
+  return columns.length > 0
+    ? columns.slice(0, 16)
+    : DEFAULT_CUSTOM_SQL_FIELDS.map((field) => ({ ...field }));
+}
+
+export function createCustomSqlSourceItem(label: string, sql: string): SourceItem {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    key: `sql-${suffix}`,
+    label: label.trim() || 'Custom SQL',
+    description: 'Custom SQL',
+    fields: fieldsFromCustomSql(sql),
+  };
+}
+
+export function addCustomSqlQuery(query: CustomSqlQuery): CustomSqlQuery {
+  const stored: CustomSqlQuery = {
+    ...query,
+    sourceItem: cloneEntity(query.sourceItem),
+  };
+  customSqlQueries.unshift(stored);
+  return stored;
+}
+
+export function findCustomSqlQuery(entityKey: string): CustomSqlQuery | undefined {
+  return customSqlQueries.find((query) => query.sourceItem.key === entityKey);
+}
+
+export function updateCustomSqlQuery(
+  entityKey: string,
+  patch: { connectionId: string; schemaName: string; sql: string; label: string },
+): CustomSqlQuery | undefined {
+  const existing = findCustomSqlQuery(entityKey);
+  if (!existing) return undefined;
+  existing.connectionId = patch.connectionId;
+  existing.schemaName = patch.schemaName;
+  existing.sql = patch.sql;
+  existing.sourceItem.label = patch.label.trim() || existing.sourceItem.label;
+  existing.sourceItem.fields = fieldsFromCustomSql(patch.sql);
+  return existing;
+}
+
+export function defaultCustomSql(connectionName: string): string {
+  const table = connectionName.replace(/\s+/g, '_') || 'table';
+  return `SELECT id, name\nFROM ${table}`;
+}
+
+export function customSqlEntitiesFor(connectionId: string, schemaName?: string): SourceItem[] {
+  return customSqlQueries
+    .filter((query) => {
+      if (query.connectionId !== connectionId) return false;
+      if (!schemaName) return true;
+      return query.schemaName === schemaName;
+    })
+    .map((query) => cloneEntity(query.sourceItem));
+}
+
 export function entitiesForConnection(connection: DataSourceConnection): SourceItem[] {
   const dataset = entitiesForConnectionId(connection.id);
-  if (dataset.length > 0) return dataset.map(cloneEntity);
+  const catalog = dataset.length > 0
+    ? dataset.map(cloneEntity)
+    : connection.entityKeys.flatMap((key) => {
+        const entity = entityByKey(key);
+        return entity ? [cloneEntity(entity)] : [];
+      });
+  return [...customSqlEntitiesFor(connection.id), ...catalog];
+}
 
-  return connection.entityKeys.flatMap((key) => {
-    const entity = entityByKey(key);
-    return entity ? [cloneEntity(entity)] : [];
-  });
+export function schemasForConnection(connection: DataSourceConnection): ConnectionSchema[] {
+  return schemasForConnectionId(connection.id);
+}
+
+export function connectionUsesSchemas(connection: DataSourceConnection): boolean {
+  return connectionHasSchemas(connection.id);
+}
+
+export function entitiesForConnectionSchema(
+  connection: DataSourceConnection,
+  schemaName: string,
+): SourceItem[] {
+  return [
+    ...customSqlEntitiesFor(connection.id, schemaName),
+    ...entitiesForSchema(connection.id, schemaName).map(cloneEntity),
+  ];
+}
+
+export function schemaNameForEntity(
+  connection: DataSourceConnection,
+  entityKey: string,
+): string | undefined {
+  return schemaForEntityKey(connection.id, entityKey);
 }
 
 export interface ConnectionSearchMatch {
   connection: DataSourceConnection;
   matchingEntities: SourceItem[];
+  matchingSchemas: ConnectionSchema[];
 }
 
 function normalizedQuery(query: string): string {
@@ -127,12 +264,73 @@ export function matchingEntitiesForConnection(
   return entitiesForConnection(connection).filter((entity) => entityNameMatches(entity, query));
 }
 
+export function schemaNameMatches(schema: ConnectionSchema, query: string): boolean {
+  const needle = normalizedQuery(query);
+  if (!needle) return true;
+  return schema.name.toLowerCase().includes(needle);
+}
+
+export function matchingSchemasForConnection(
+  connection: DataSourceConnection,
+  query: string,
+): ConnectionSchema[] {
+  const needle = normalizedQuery(query);
+  if (!needle) return [];
+  return schemasForConnection(connection).filter((schema) => {
+    if (schemaNameMatches(schema, query)) return true;
+    return entitiesForConnectionSchema(connection, schema.name).some((entity) =>
+      entityNameMatches(entity, query),
+    );
+  });
+}
+
+export function matchingEntitiesForSchema(
+  connection: DataSourceConnection,
+  schemaName: string,
+  query: string,
+): SourceItem[] {
+  const entities = entitiesForConnectionSchema(connection, schemaName);
+  const needle = normalizedQuery(query);
+  if (!needle) return [];
+  if (schemaNameMatches({ name: schemaName, entityKeys: [] }, query)) return entities;
+  return entities.filter((entity) => entityNameMatches(entity, query));
+}
+
 export function matchingEntityCaption(entities: SourceItem[], limit = 3): string {
   if (entities.length === 0) return '';
   const names = entities.slice(0, limit).map((entity) => entity.label);
   const remaining = entities.length - names.length;
   const listed = names.join(', ');
   return remaining > 0 ? `${listed} +${remaining}` : listed;
+}
+
+export function matchingCatalogCaption(match: ConnectionSearchMatch, limit = 3): string {
+  if (match.matchingEntities.length > 0) {
+    return matchingEntityCaption(match.matchingEntities, limit);
+  }
+  if (match.matchingSchemas.length === 0) return '';
+  const names = match.matchingSchemas.slice(0, limit).map((schema) => schema.name);
+  const remaining = match.matchingSchemas.length - names.length;
+  const listed = names.join(', ');
+  return remaining > 0 ? `${listed} +${remaining}` : listed;
+}
+
+export function schemaHasUsedTable(
+  connection: DataSourceConnection,
+  schema: ConnectionSchema,
+  identities: Iterable<string>,
+): boolean {
+  const keys = [
+    ...schema.entityKeys,
+    ...customSqlEntitiesFor(connection.id, schema.name).map((entity) => entity.key),
+  ];
+  for (const entityKey of keys) {
+    const identity = entityCatalogSelectionId(connection.id, entityKey);
+    for (const used of identities) {
+      if (used === identity) return true;
+    }
+  }
+  return false;
 }
 
 export function connectionHasUsedTable(
@@ -152,15 +350,24 @@ export function searchConnections(
 ): ConnectionSearchMatch[] {
   const needle = normalizedQuery(query);
   if (!needle) {
-    return connections.map((connection) => ({ connection, matchingEntities: [] }));
+    return connections.map((connection) => ({
+      connection,
+      matchingEntities: [],
+      matchingSchemas: [],
+    }));
   }
 
   return connections.flatMap((connection) => {
     const matchingEntities = matchingEntitiesForConnection(connection, query);
-    if (!connectionNameMatches(connection, needle) && matchingEntities.length === 0) {
+    const matchingSchemas = matchingSchemasForConnection(connection, query);
+    if (
+      !connectionNameMatches(connection, needle)
+      && matchingEntities.length === 0
+      && matchingSchemas.length === 0
+    ) {
       return [];
     }
-    return [{ connection, matchingEntities }];
+    return [{ connection, matchingEntities, matchingSchemas }];
   });
 }
 

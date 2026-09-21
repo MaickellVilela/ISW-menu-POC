@@ -12,6 +12,9 @@ import {
   nodeWidth,
   nodeSize,
   resolvedTableSourceId,
+  outputPreviewForNode,
+  previewToCsv,
+  canvasSourceDefinition,
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
@@ -21,6 +24,9 @@ import {
 import CanvasNode from './CanvasNode.vue';
 import ConnectionLines from './ConnectionLines.vue';
 import CanvasHelp from './CanvasHelp.vue';
+import OutputPreviewModal from './OutputPreviewModal.vue';
+import SourceDefinitionModal from './SourceDefinitionModal.vue';
+import { useSourceDefinition, type SourceDefinition } from '~/composables/sourceDefinition';
 import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
 import type { CanvasFilterShortcut } from '~/composables/canvasFilterShortcuts';
 import {
@@ -52,6 +58,7 @@ const {
   toggleCollapse,
   setAllCollapsed,
   setNodeName,
+  replaceTable,
   setNodeWidth,
   removeNode,
   clear,
@@ -66,13 +73,25 @@ const {
 
 const emit = defineEmits<{
   'update:usedTableIdentities': [identities: string[]];
+  'update:selectedTable': [node: CanvasNodeModel | null];
   'open-filter-shortcut': [shortcut: CanvasFilterShortcut];
+  save: [];
+  configure: [];
 }>();
 
 const usedTableIdentities = computed(() => canvasTableIdentities(nodes.value));
+const selectedNodeId = ref<string | null>(null);
+const selectedTable = computed(() => {
+  const node = selectedNodeId.value ? findNode(selectedNodeId.value) : undefined;
+  return node?.type === 'table' ? node : null;
+});
 
 watch(usedTableIdentities, (identities) => {
   emit('update:usedTableIdentities', identities);
+}, { immediate: true });
+
+watch(selectedTable, (node) => {
+  emit('update:selectedTable', node ?? null);
 }, { immediate: true });
 
 const route = useRoute();
@@ -110,7 +129,15 @@ const viewport = ref<HTMLElement | null>(null);
 const isDragOver = ref(false);
 const zoom = ref(1);
 const showDemoMenu = ref(false);
+const showActionsMenu = ref(false);
 const showHelp = ref(false);
+const showPreview = ref(false);
+const showSourceDefinition = ref(false);
+const { definition: sourceDefinition, load: loadSourceDefinition, save: saveSourceDefinition } = useSourceDefinition();
+const previewNodeId = ref<string | undefined>();
+const copyStatus = ref('');
+const saveStatus = ref('');
+const showClearConfirm = ref(false);
 // Reflects the real cards: compact only when every card is collapsed, else
 // expanded. Since cards are created expanded, this defaults to 'expanded'.
 const viewMode = computed<'expanded' | 'compact'>(() => {
@@ -122,8 +149,32 @@ function setViewMode(mode: 'expanded' | 'compact'): void {
   setAllCollapsed(mode === 'compact');
 }
 
+function closeActionsMenu(): void {
+  showActionsMenu.value = false;
+}
+
+function toggleActionsMenu(): void {
+  showDemoMenu.value = false;
+  showActionsMenu.value = !showActionsMenu.value;
+}
+
 function toggleDemoMenu(): void {
+  showActionsMenu.value = false;
   showDemoMenu.value = !showDemoMenu.value;
+}
+
+function isInsideSelector(target: EventTarget | null, selector: string): boolean {
+  const el = target as HTMLElement | null;
+  return Boolean(el?.closest(selector));
+}
+
+function onDocumentPointerDown(event: PointerEvent): void {
+  if (showActionsMenu.value && !isInsideSelector(event.target, '[data-actions-menu]')) {
+    closeActionsMenu();
+  }
+  if (showDemoMenu.value && !isInsideSelector(event.target, '[data-demo-menu]')) {
+    showDemoMenu.value = false;
+  }
 }
 
 function applyPreset(preset: DemoPreset): void {
@@ -316,9 +367,16 @@ function onDrop(event: DragEvent): void {
 function onStartMove({ id, event }: { id: string; event: PointerEvent }): void {
   const node = findNode(id);
   if (!node) return;
+  selectedNodeId.value = node.type === 'table' ? id : null;
   const { x, y } = toSurfaceCoords(event);
   interaction.value = { mode: 'move', id, offsetX: x - node.x, offsetY: y - node.y };
   attachWindowListeners();
+}
+
+function onSurfacePointerDown(event: PointerEvent): void {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('[data-node-id]')) return;
+  selectedNodeId.value = null;
 }
 
 function onStartConnect({ id, event }: { id: string; event: PointerEvent }): void {
@@ -385,8 +443,69 @@ function detachWindowListeners(): void {
   window.removeEventListener('pointerup', onPointerUp);
 }
 
-function onPreview(): void {
-  // Placeholder: preview action intentionally not implemented yet.
+function onPreview(id?: string): void {
+  previewNodeId.value = id;
+  showPreview.value = true;
+}
+
+const currentPreview = computed(() => outputPreviewForNode(nodes.value, previewNodeId.value));
+
+function downloadTextFile(filename: string, text: string, mimeType: string): void {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportOutput(): void {
+  const preview = outputPreviewForNode(nodes.value, previewNodeId.value);
+  if (preview.columns.length === 0) return;
+  downloadTextFile('data-source-output.csv', previewToCsv(preview), 'text/csv;charset=utf-8');
+}
+
+async function copySource(): Promise<void> {
+  await navigator.clipboard.writeText(canvasSourceDefinition(nodes.value));
+  copyStatus.value = 'Copied';
+  window.setTimeout(() => {
+    copyStatus.value = '';
+  }, 1600);
+}
+
+function previewFromMenu(): void {
+  closeActionsMenu();
+  onPreview();
+}
+
+function exportFromMenu(): void {
+  closeActionsMenu();
+  exportOutput();
+}
+
+function openSourceDefinition(): void {
+  closeActionsMenu();
+  showSourceDefinition.value = true;
+}
+
+function applySourceDefinition(next: SourceDefinition): void {
+  saveSourceDefinition(next);
+  showSourceDefinition.value = false;
+}
+
+function saveSource(): void {
+  emit('save');
+  saveStatus.value = 'Saved';
+  window.setTimeout(() => {
+    saveStatus.value = '';
+  }, 1600);
+}
+
+function confirmClear(): void {
+  showClearConfirm.value = false;
+  selectedNodeId.value = null;
+  clear();
 }
 
 /* ------------------------------ shortcuts -------------------------------- */
@@ -400,8 +519,20 @@ function isEditingText(target: EventTarget | null): boolean {
 }
 
 function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && showSourceDefinition.value) {
+    showSourceDefinition.value = false;
+    return;
+  }
   if (event.key === 'Escape' && showHelp.value) {
     showHelp.value = false;
+    return;
+  }
+  if (event.key === 'Escape' && showActionsMenu.value) {
+    closeActionsMenu();
+    return;
+  }
+  if (event.key === 'Escape' && showDemoMenu.value) {
+    showDemoMenu.value = false;
     return;
   }
   if (!(event.metaKey || event.ctrlKey) || isEditingText(event.target)) return;
@@ -412,20 +543,42 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(async () => {
+  loadSourceDefinition();
   window.addEventListener('keydown', onKeydown);
+  document.addEventListener('pointerdown', onDocumentPointerDown);
   await nextTick();
   fitToView();
 });
 onBeforeUnmount(() => {
   detachWindowListeners();
   window.removeEventListener('keydown', onKeydown);
+  document.removeEventListener('pointerdown', onDocumentPointerDown);
+});
+
+function clearTableSelection(): void {
+  selectedNodeId.value = null;
+}
+
+defineExpose({
+  clearTableSelection,
+  replaceTable,
 });
 </script>
 
 <template>
   <div class="relative flex h-full w-full flex-col">
     <!-- Toolbar -->
-    <div class="z-20 flex flex-shrink-0 items-center justify-end border-b border-[#E2E2E2] bg-white px-4 py-2">
+    <div class="z-20 flex flex-shrink-0 items-center justify-between gap-3 border-b border-[#E2E2E2] bg-white px-4 py-2">
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770]"
+          title="Configure this data source"
+          @click="emit('configure')"
+        >
+          Configure
+        </button>
+      </div>
       <div class="flex items-center gap-2">
         <div class="flex items-center rounded-md border border-[#E2E2E2] text-xs">
           <button
@@ -435,7 +588,7 @@ onBeforeUnmount(() => {
             title="Show full card details"
             @click="setViewMode('expanded')"
           >
-            Expanded
+            Expand
           </button>
           <button
             type="button"
@@ -447,10 +600,10 @@ onBeforeUnmount(() => {
             Compact
           </button>
         </div>
-        <div class="flex items-center rounded-md border border-[#E2E2E2]">
-          <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom out" @click="zoomOut">−</button>
-          <button type="button" class="w-12 border-x border-[#E2E2E2] py-1 text-xs text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
-          <button type="button" class="px-2 py-1 text-sm text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
+        <div class="flex h-6 items-center rounded-md border border-[#E2E2E2] text-xs">
+          <button type="button" class="flex h-full items-center px-2 text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom out" @click="zoomOut">−</button>
+          <button type="button" class="flex h-full w-12 items-center justify-center border-x border-[#E2E2E2] text-[#6B6B6B] hover:text-[#3B1770]" title="Reset zoom" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
+          <button type="button" class="flex h-full items-center px-2 text-[#6B6B6B] hover:text-[#3B1770]" title="Zoom in" @click="zoomIn">+</button>
         </div>
         <button
           type="button"
@@ -501,13 +654,66 @@ onBeforeUnmount(() => {
           </svg>
           Tidy up
         </button>
+        <span class="mx-1 h-5 w-px flex-shrink-0 bg-[#E2E2E2]" aria-hidden="true" />
+        <div class="relative" data-actions-menu>
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770]"
+            :aria-expanded="showActionsMenu"
+            title="Source definition, preview, export, or copy"
+            @click="toggleActionsMenu"
+          >
+            Actions
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div
+            v-if="showActionsMenu"
+            class="absolute right-0 top-full z-40 mt-1 w-48 overflow-hidden rounded-lg border border-[#E2E2E2] bg-white py-1 shadow-xl"
+          >
+            <button
+              type="button"
+              class="flex w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F5F1FC]"
+              @click="openSourceDefinition"
+            >
+              Source Definition
+            </button>
+            <button
+              type="button"
+              class="flex w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F5F1FC] disabled:opacity-40"
+              :disabled="!hasContent"
+              @click="previewFromMenu"
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              class="flex w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F5F1FC] disabled:opacity-40"
+              :disabled="!hasContent"
+              @click="exportFromMenu"
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              class="flex w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F5F1FC] disabled:opacity-40"
+              :disabled="!hasContent"
+              @click="copySource"
+            >
+              {{ copyStatus || 'Copy source' }}
+            </button>
+          </div>
+        </div>
+        <span class="mx-1 h-5 w-px flex-shrink-0 bg-[#E2E2E2]" aria-hidden="true" />
         <button
           type="button"
-          class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
+          class="rounded-md bg-[#3B1770] px-3 py-1 text-xs font-medium text-white hover:bg-[#4B1E8C] disabled:bg-[#C9CED6]"
           :disabled="!hasContent"
-          @click="clear"
+          :title="saveStatus || 'Save this data source'"
+          @click="saveSource"
         >
-          Clear canvas
+          {{ saveStatus || 'Save' }}
         </button>
       </div>
     </div>
@@ -532,6 +738,7 @@ onBeforeUnmount(() => {
         @dragover="onDragOver"
         @dragleave="onDragLeave"
         @drop="onDrop"
+        @pointerdown="onSurfacePointerDown"
       >
         <ConnectionLines
           :connections="connections"
@@ -569,6 +776,7 @@ onBeforeUnmount(() => {
           :has-performance-filter="hasPerformanceFilter(node)"
           :filtered-field-ids="filteredFieldIds(node)"
           :has-output-filter="outputHasGlobalFilters(filterMarks.globalFilters)"
+          :selected="selectedNodeId === node.id"
           @start-move="onStartMove"
           @start-connect="onStartConnect"
           @start-resize="onStartResize"
@@ -597,7 +805,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Floating demo presets (pinned to the canvas, above the scroll viewport) -->
-    <div class="absolute bottom-4 right-4 z-30 flex flex-col items-end gap-2">
+    <div class="absolute bottom-4 right-4 z-30 flex flex-col items-end gap-2" data-demo-menu>
       <div
         v-if="showDemoMenu"
         class="w-64 overflow-hidden rounded-lg border border-[#E2E2E2] bg-white shadow-xl"
@@ -631,20 +839,31 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- Persistent help (bottom-left) -->
-    <button
-      type="button"
-      class="absolute bottom-4 left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#E2E2E2] bg-white text-[#6B6B6B] shadow-lg hover:border-[#3B1770] hover:text-[#3B1770]"
-      title="How to build a data source"
-      aria-label="Help"
-      @click="showHelp = true"
-    >
-      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7" />
-        <path d="M12 17h.01" />
-      </svg>
-    </button>
+    <!-- Persistent help and clear (bottom-left) -->
+    <div class="absolute bottom-4 left-4 z-30 flex items-center gap-2">
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-full border border-[#E2E2E2] bg-white text-[#6B6B6B] shadow-lg hover:border-[#3B1770] hover:text-[#3B1770]"
+        title="How to build a data source"
+        aria-label="Help"
+        @click="showHelp = true"
+      >
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7" />
+          <path d="M12 17h.01" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="rounded-full border border-[#E2E2E2] bg-white px-4 py-2 text-sm font-medium text-[#6B6B6B] shadow-lg hover:border-[#3B1770] hover:text-[#3B1770] disabled:opacity-40"
+        :disabled="!hasContent"
+        title="Remove every table and join from the canvas"
+        @click="showClearConfirm = true"
+      >
+        Clear canvas
+      </button>
+    </div>
 
     <!-- Help modal -->
     <div
@@ -662,6 +881,49 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
         <CanvasHelp />
+      </div>
+    </div>
+
+    <OutputPreviewModal
+      :open="showPreview"
+      :preview="currentPreview"
+      @close="showPreview = false"
+      @export="exportOutput"
+    />
+
+    <SourceDefinitionModal
+      :open="showSourceDefinition"
+      :definition="sourceDefinition"
+      @cancel="showSourceDefinition = false"
+      @save="applySourceDefinition"
+    />
+
+    <div
+      v-if="showClearConfirm"
+      class="absolute inset-0 z-40 flex items-center justify-center bg-black/30 p-4"
+      @click.self="showClearConfirm = false"
+    >
+      <div class="w-[24rem] max-w-full rounded-xl border border-[#E2E2E2] bg-white p-5 shadow-xl">
+        <h2 class="text-base font-semibold text-[#25262E]">Clear the canvas?</h2>
+        <p class="mt-2 text-sm leading-relaxed text-[#667085]">
+          This removes every table and join from the canvas.
+        </p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-[#C9CED6] bg-white px-3 py-1.5 text-sm font-medium text-[#25262E] hover:border-[#6F42A5] hover:text-[#6F42A5]"
+            @click="showClearConfirm = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-[#3B1770] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#4B1E8C]"
+            @click="confirmClear"
+          >
+            Clear canvas
+          </button>
+        </div>
       </div>
     </div>
   </div>

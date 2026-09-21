@@ -121,7 +121,17 @@ function updateMapLocale(value: MapLocaleSettings): void {
 <template>
   <div class="flex h-full min-h-0 bg-[#FAFAFA]">
     <aside class="flex w-56 flex-shrink-0 flex-col border-r border-[#E2E2E2] bg-white" aria-label="Configuration sections">
-      <div class="border-b border-[#EAEAEA] px-4 py-5">
+      <div class="border-b border-[#EAEAEA] px-4 py-4">
+        <button
+          type="button"
+          class="mb-3 inline-flex items-center gap-1 rounded px-1 py-1 text-xs font-medium text-[#667085] transition-colors hover:bg-[#F5F1FC] hover:text-[#3B1770]"
+          @click="emit('go-to-canvas')"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m14.5 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Back to canvas
+        </button>
         <h1 class="text-base font-semibold text-[#25262E]">Data source configuration</h1>
       </div>
 

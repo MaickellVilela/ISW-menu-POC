@@ -18,7 +18,7 @@ const segments = computed(() => highlightQuerySegments(props.text, props.query ?
     <template v-for="(segment, index) in segments" :key="`${index}-${segment.text}`">
       <span
         v-if="segment.matched"
-        class="rounded-sm bg-[#F6E27A] px-px font-semibold text-[#25262E]"
+        class="rounded-sm bg-brand px-px font-semibold text-white"
       >{{ segment.text }}</span>
       <template v-else>{{ segment.text }}</template>
     </template>

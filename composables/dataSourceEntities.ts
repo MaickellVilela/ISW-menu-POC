@@ -638,12 +638,105 @@ export const CONNECTION_DATASETS: Record<string, SourceItem[]> = {
 /** Managed retail catalog, kept as `ENTITIES` for demo presets and files. */
 export const ENTITIES = MANAGED_ENTITIES;
 
+export interface ConnectionSchema {
+  name: string;
+  entityKeys: string[];
+}
+
+/**
+ * Third catalog level for relational connections.
+ * Document, search, file, and script connectors stay two-level (connection → entity).
+ */
+export const CONNECTION_SCHEMAS: Record<string, ConnectionSchema[]> = {
+  managed: [
+    {
+      name: 'public',
+      entityKeys: ['customers', 'products', 'categories', 'suppliers', 'stores', 'regions', 'employees'],
+    },
+    { name: 'sales', entityKeys: ['orders', 'order_items'] },
+  ],
+  redshift: [
+    { name: 'public', entityKeys: ['dw_sales', 'dw_customers', 'dw_products'] },
+    { name: 'staging', entityKeys: ['dw_dates'] },
+  ],
+  'snowflake-logi': [
+    { name: 'PUBLIC', entityKeys: ['logi_reports', 'logi_folders', 'logi_owners', 'logi_schedules'] },
+  ],
+  'snowflake-peter': [
+    { name: 'PUBLIC', entityKeys: ['peter_accounts', 'peter_opportunities', 'peter_activities'] },
+  ],
+  postgresql: [
+    { name: 'public', entityKeys: ['tickets', 'ticket_comments', 'requesters', 'queues'] },
+  ],
+  'managed-peter': [
+    { name: 'public', entityKeys: ['mp_customers', 'mp_subscriptions', 'mp_invoices'] },
+  ],
+  impala: [
+    { name: 'default', entityKeys: ['page_views', 'web_sessions', 'visitors'] },
+  ],
+  bigquery: [
+    { name: 'analytics', entityKeys: ['ga_events', 'ga_sessions', 'ga_users', 'ga_campaigns'] },
+  ],
+  'postgresql-ses': [
+    { name: 'public', entityKeys: ['se_accounts', 'se_demos', 'se_territories'] },
+  ],
+  'redshift-snapshot': [
+    { name: 'public', entityKeys: ['snap_inventory', 'snap_skus', 'snap_warehouses'] },
+  ],
+  'isw-snowflake': [
+    { name: 'PUBLIC', entityKeys: ['sfdc_accounts', 'sfdc_contacts'] },
+    { name: 'SALES', entityKeys: ['sfdc_opportunities', 'sfdc_leads'] },
+  ],
+  'flight-schedule': [
+    { name: 'operations', entityKeys: ['flights', 'aircraft'] },
+    { name: 'people', entityKeys: ['instructors', 'airports'] },
+  ],
+  'learning-management': [
+    { name: 'default', entityKeys: ['courses', 'learners', 'enrollments', 'completions'] },
+  ],
+  petertest: [
+    { name: 'public', entityKeys: ['sample_alpha', 'sample_beta', 'sample_gamma'] },
+  ],
+  adventureworks: [
+    { name: 'Sales', entityKeys: ['sales_order_header', 'sales_order_detail', 'aw_customer'] },
+    { name: 'Production', entityKeys: ['aw_product'] },
+  ],
+  adventureworkspgr: [
+    { name: 'Person', entityKeys: ['person', 'address'] },
+    { name: 'Sales', entityKeys: ['sales_territory', 'credit_card'] },
+  ],
+};
+
 export function entitiesForConnectionId(connectionId: string): SourceItem[] {
   return CONNECTION_DATASETS[connectionId] ?? [];
 }
 
 export function connectionEntityKeys(connectionId: string): string[] {
   return entitiesForConnectionId(connectionId).map((table) => table.key);
+}
+
+export function schemasForConnectionId(connectionId: string): ConnectionSchema[] {
+  return CONNECTION_SCHEMAS[connectionId] ?? [];
+}
+
+export function connectionHasSchemas(connectionId: string): boolean {
+  return schemasForConnectionId(connectionId).length > 0;
+}
+
+export function schemaForEntityKey(connectionId: string, entityKey: string): string | undefined {
+  return schemasForConnectionId(connectionId).find((schema) =>
+    schema.entityKeys.includes(entityKey),
+  )?.name;
+}
+
+export function entitiesForSchema(connectionId: string, schemaName: string): SourceItem[] {
+  const schema = schemasForConnectionId(connectionId).find((item) => item.name === schemaName);
+  if (!schema) return [];
+  const tables = entitiesForConnectionId(connectionId);
+  return schema.entityKeys.flatMap((key) => {
+    const table = tables.find((item) => item.key === key);
+    return table ? [table] : [];
+  });
 }
 
 /** Look up an entity definition by its globally unique catalog key. */

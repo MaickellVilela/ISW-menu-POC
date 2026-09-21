@@ -3,17 +3,26 @@ import { computed, ref, watch } from 'vue';
 import {
   DATA_SOURCE_CONNECTIONS,
   DATA_SOURCE_FILES,
+  addCustomSqlQuery,
+  connectionUsesSchemas,
+  createCustomSqlSourceItem,
   createDataSourceFile,
-  entityCatalogSelectionId,
   entitiesForConnection,
+  entitiesForConnectionSchema,
+  entityCatalogSelectionId,
   parseCatalogSourceId,
+  schemaNameForEntity,
+  schemasForConnection,
   type DataSourceConnection,
   type DataSourceFile,
   type SourceCatalogSelection,
 } from '~/composables/dataSourceCatalog';
+import type { ConnectionSchema } from '~/composables/dataSourceEntities';
 import type { SourceItem } from '~/composables/useDataSourceCanvas';
 import ConnectionEntitiesPanel from './ConnectionEntitiesPanel.vue';
 import ConnectionList from './ConnectionList.vue';
+import ConnectionSchemasPanel from './ConnectionSchemasPanel.vue';
+import CustomSqlModal from './CustomSqlModal.vue';
 import SourceFilesPanel from './SourceFilesPanel.vue';
 
 type SourcePanelTab = 'connections' | 'files';
@@ -44,7 +53,10 @@ const emit = defineEmits<{
 
 const activeTab = ref<SourcePanelTab>('connections');
 const selectedConnection = ref<DataSourceConnection | null>(null);
+const selectedSchema = ref<ConnectionSchema | null>(null);
 const catalogSearchQuery = ref('');
+const catalogRevision = ref(0);
+const showCustomSql = ref(false);
 const files = ref<DataSourceFile[]>(props.initialFiles.map((file) => ({
   ...file,
   sourceItem: {
@@ -64,6 +76,10 @@ function applySelectedSourceId(sourceId: string): void {
   if (!connection) return;
   activeTab.value = 'connections';
   selectedConnection.value = connection;
+  const schemaName = schemaNameForEntity(connection, parsed.entityKey);
+  selectedSchema.value = schemaName
+    ? schemasForConnection(connection).find((schema) => schema.name === schemaName) ?? null
+    : null;
 }
 
 watch(
@@ -72,9 +88,14 @@ watch(
   { immediate: true },
 );
 
-const selectedEntities = computed(() =>
-  selectedConnection.value ? entitiesForConnection(selectedConnection.value) : [],
-);
+const selectedEntities = computed(() => {
+  void catalogRevision.value;
+  if (!selectedConnection.value) return [];
+  if (selectedSchema.value) {
+    return entitiesForConnectionSchema(selectedConnection.value, selectedSchema.value.name);
+  }
+  return entitiesForConnection(selectedConnection.value);
+});
 const selectedEntityKey = computed(() => {
   if (!selectedConnection.value) return '';
   const selected = selectedEntities.value.find((entity) =>
@@ -93,11 +114,21 @@ function selectTab(tab: SourcePanelTab): void {
 
 function selectConnection(connection: DataSourceConnection): void {
   selectedConnection.value = connection;
+  selectedSchema.value = null;
   emit('connection-selected', connection);
+}
+
+function selectSchema(schema: ConnectionSchema): void {
+  selectedSchema.value = schema;
 }
 
 function returnToConnections(): void {
   selectedConnection.value = null;
+  selectedSchema.value = null;
+}
+
+function returnToSchemas(): void {
+  selectedSchema.value = null;
 }
 
 function selectEntity(sourceItem: SourceItem): void {
@@ -130,6 +161,32 @@ function addFile(file: File): void {
 function removeFile(id: string): void {
   files.value = files.value.filter((file) => file.id !== id);
   emit('file-removed', id);
+}
+
+function schemaForNewQuery(connection: DataSourceConnection): ConnectionSchema | null {
+  if (selectedConnection.value?.id === connection.id && selectedSchema.value) {
+    return selectedSchema.value;
+  }
+  if (!connectionUsesSchemas(connection)) return null;
+  return schemasForConnection(connection)[0] ?? null;
+}
+
+function saveCustomSql(payload: { connection: DataSourceConnection; name: string; sql: string }): void {
+  const schema = schemaForNewQuery(payload.connection);
+  const sourceItem = createCustomSqlSourceItem(payload.name, payload.sql);
+  addCustomSqlQuery({
+    connectionId: payload.connection.id,
+    schemaName: schema?.name ?? '',
+    sql: payload.sql,
+    sourceItem,
+  });
+  catalogRevision.value += 1;
+  catalogSearchQuery.value = '';
+  showCustomSql.value = false;
+  selectedConnection.value = payload.connection;
+  selectedSchema.value = schema;
+  activeTab.value = 'connections';
+  if (props.mode === 'select') selectEntity(sourceItem);
 }
 </script>
 
@@ -170,28 +227,56 @@ function removeFile(id: string): void {
       </button>
     </nav>
 
-    <div class="min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1 flex-col">
       <template v-if="activeTab === 'connections'">
-        <ConnectionEntitiesPanel
-          v-if="selectedConnection"
-          :connection="selectedConnection"
-          :entities="selectedEntities"
-          :mode="mode"
-          :selected-key="selectedEntityKey"
-          :search-query="catalogSearchQuery"
-          :used-table-identities="usedTableIdentities"
-          @back="returnToConnections"
-          @select="selectEntity"
-          @update:search-query="catalogSearchQuery = $event"
-        />
-        <ConnectionList
-          v-else
-          :connections="connections"
-          :search-query="catalogSearchQuery"
-          :used-table-identities="usedTableIdentities"
-          @select="selectConnection"
-          @update:search-query="catalogSearchQuery = $event"
-        />
+        <div class="min-h-0 flex-1">
+          <ConnectionEntitiesPanel
+            v-if="selectedConnection && (selectedSchema || !connectionUsesSchemas(selectedConnection))"
+            :connection="selectedConnection"
+            :entities="selectedEntities"
+            :mode="mode"
+            :selected-key="selectedEntityKey"
+            :search-query="catalogSearchQuery"
+            :used-table-identities="usedTableIdentities"
+            :schema-name="selectedSchema?.name ?? ''"
+            :back-label="selectedSchema ? 'Schemas' : 'Connections'"
+            :catalog-revision="catalogRevision"
+            @back="selectedSchema ? returnToSchemas() : returnToConnections()"
+            @select="selectEntity"
+            @update:search-query="catalogSearchQuery = $event"
+          />
+          <ConnectionSchemasPanel
+            v-else-if="selectedConnection"
+            :connection="selectedConnection"
+            :search-query="catalogSearchQuery"
+            :used-table-identities="usedTableIdentities"
+            :catalog-revision="catalogRevision"
+            @back="returnToConnections"
+            @select="selectSchema"
+            @update:search-query="catalogSearchQuery = $event"
+          />
+          <ConnectionList
+            v-else
+            :connections="connections"
+            :search-query="catalogSearchQuery"
+            :used-table-identities="usedTableIdentities"
+            :catalog-revision="catalogRevision"
+            @select="selectConnection"
+            @update:search-query="catalogSearchQuery = $event"
+          />
+        </div>
+        <div class="flex-shrink-0 border-t border-[#E2E2E2] bg-white p-2">
+          <button
+            type="button"
+            class="flex w-full items-center justify-center gap-2 rounded-md border border-[#D8D8D8] bg-white px-3 py-2 text-xs font-medium text-[#25262E] transition-colors hover:border-[#3B1770] hover:bg-[#F8F6FC] hover:text-[#3B1770]"
+            @click="showCustomSql = true"
+          >
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M5 7h14M5 12h9M5 17h11" stroke-linecap="round" />
+            </svg>
+            Custom SQL
+          </button>
+        </div>
       </template>
 
       <SourceFilesPanel
@@ -204,5 +289,13 @@ function removeFile(id: string): void {
         @upload="addFile"
       />
     </div>
+
+    <CustomSqlModal
+      :open="showCustomSql"
+      :connections="connections"
+      :selected-connection-id="selectedConnection?.id ?? ''"
+      @cancel="showCustomSql = false"
+      @save="saveCustomSql"
+    />
   </div>
 </template>

@@ -2,7 +2,6 @@
   <div class="flex h-full flex-col overflow-hidden">
     <DataSourceWorkspaceHeader
       :section="section"
-      @update:section="onWorkspaceSection"
     />
 
     <div
@@ -14,16 +13,30 @@
         aria-label="Canvas"
       >
         <DataSourceCanvas
+          ref="canvasRef"
           @update:used-table-identities="usedTableIdentities = $event"
+          @update:selected-table="selectedTable = $event"
           @open-filter-shortcut="openFilterShortcut"
+          @configure="onWorkspaceSection('settings')"
         />
       </section>
 
       <aside
-        class="w-[280px] flex-shrink-0 bg-white lg:w-[320px]"
-        aria-label="Source browser"
+        class="w-[300px] flex-shrink-0 bg-white lg:w-[340px]"
+        :aria-label="selectedTable ? 'Entity details' : 'Source browser'"
       >
-        <SourcePanel :used-table-identities="usedTableIdentities" />
+        <EntityInspectorPanel
+          v-if="selectedTable"
+          :node="selectedTable"
+          @close="closeInspector"
+          @apply="applyEntityDetails"
+          @view-catalog="viewEntityCatalog"
+        />
+        <SourcePanel
+          v-else
+          :used-table-identities="usedTableIdentities"
+          :selected-source-id="catalogFocusId"
+        />
       </aside>
     </div>
 
@@ -52,12 +65,35 @@ import {
 import DataSourceCanvas from '~/components/datasource/DataSourceCanvas.vue';
 import DataSourceSettingsPanel from '~/components/datasource/DataSourceSettingsPanel.vue';
 import DataSourceWorkspaceHeader from '~/components/datasource/DataSourceWorkspaceHeader.vue';
+import EntityInspectorPanel from '~/components/datasource/EntityInspectorPanel.vue';
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
+import type { CanvasNode, TableRebindPatch } from '~/composables/useDataSourceCanvas';
 
 const route = useRoute();
 const router = useRouter();
 
 const usedTableIdentities = ref<string[]>([]);
+const selectedTable = ref<CanvasNode | null>(null);
+const catalogFocusId = ref('');
+const canvasRef = ref<{
+  clearTableSelection: () => void;
+  replaceTable: (id: string, patch: TableRebindPatch) => void;
+} | null>(null);
+
+function closeInspector(): void {
+  catalogFocusId.value = '';
+  canvasRef.value?.clearTableSelection();
+}
+
+function applyEntityDetails(patch: TableRebindPatch): void {
+  if (!selectedTable.value) return;
+  canvasRef.value?.replaceTable(selectedTable.value.id, patch);
+}
+
+function viewEntityCatalog(sourceId: string): void {
+  catalogFocusId.value = sourceId;
+  canvasRef.value?.clearTableSelection();
+}
 const filterShortcut = computed(() => shortcutFromConfigureQuery(route.query));
 
 const settingsSection = computed(() => parseSettingsSection(route.query.configure) ?? 'time-bar');

@@ -15,6 +15,7 @@ import {
   JOIN_TYPE_LABELS,
   nodeWidth,
   resolvedTableSourceId,
+  isJoinIncomplete,
   type CanvasNode,
   type FieldDef,
   type FieldOption,
@@ -36,6 +37,7 @@ const props = withDefaults(
     hasPerformanceFilter?: boolean;
     filteredFieldIds?: Record<string, string>;
     hasOutputFilter?: boolean;
+    selected?: boolean;
   }>(),
   {
     leftLabel: '',
@@ -47,6 +49,7 @@ const props = withDefaults(
     hasPerformanceFilter: false,
     filteredFieldIds: () => ({}),
     hasOutputFilter: false,
+    selected: false,
   },
 );
 
@@ -68,6 +71,7 @@ const emit = defineEmits<{
 
 const isJoin = computed(() => props.node.type === 'join');
 const isOutput = computed(() => props.node.type === 'output');
+const joinNeedsMatch = computed(() => isJoinIncomplete(props.node));
 const joinTypes: JoinType[] = ['inner', 'left', 'full'];
 const typeMenuOpen = ref(false);
 
@@ -190,11 +194,15 @@ function openOutputFilters(): void {
     :class="[
       isConnectTarget
         ? 'border-[#3B1770] ring-2 ring-[#3B1770]/40'
+        : selected
+          ? 'border-[#3B1770] ring-2 ring-[#3B1770]/25'
         : isOutput
           ? 'border-[#25262E]'
-          : isJoin
-            ? 'border-[#C9B8EC]'
-            : 'border-[#D8D8D8]',
+          : joinNeedsMatch
+            ? 'border-[#C9780A] ring-2 ring-[#C9780A]/30'
+            : isJoin
+              ? 'border-[#C9B8EC]'
+              : 'border-[#D8D8D8]',
     ]"
     :style="baseStyle"
     @pointerdown="emit('start-move', { id: node.id, event: $event })"
@@ -339,8 +347,11 @@ function openOutputFilters(): void {
     <!-- ======================= JOIN ======================= -->
     <template v-else-if="isJoin">
       <header
-        class="relative flex h-9 items-center gap-1 rounded-t-lg border-b border-[#EEE] bg-[#F5F1FC] pl-1.5 pr-2"
-        :class="{ 'rounded-b-lg border-b-0': node.collapsed }"
+        class="relative flex h-9 items-center gap-1 rounded-t-lg border-b pl-1.5 pr-2"
+        :class="[
+          joinNeedsMatch ? 'border-[#F0D4A8] bg-[#FFF6E8]' : 'border-[#EEE] bg-[#F5F1FC]',
+          { 'rounded-b-lg border-b-0': node.collapsed },
+        ]"
       >
         <button
           type="button"
@@ -378,6 +389,14 @@ function openOutputFilters(): void {
         </div>
 
         <!-- Join type (right) -->
+        <span
+          v-if="joinNeedsMatch"
+          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#C9780A] text-[10px] font-bold text-white"
+          title="Specify matching columns"
+          aria-label="Join needs matching columns"
+        >
+          !
+        </span>
         <button
           type="button"
           class="flex flex-shrink-0 items-center rounded p-1 hover:bg-white"
@@ -432,6 +451,12 @@ function openOutputFilters(): void {
 
       <!-- Conditions -->
       <div v-if="!node.collapsed" class="border-t border-[#EEE] px-2.5 py-2">
+        <p
+          v-if="joinNeedsMatch"
+          class="mb-2 rounded-md bg-[#FFF6E8] px-2 py-1 text-[11px] font-medium leading-snug text-[#8A4B08]"
+        >
+          Specify matching columns
+        </p>
         <p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">Match on</p>
         <div
           v-for="condition in node.conditions"
