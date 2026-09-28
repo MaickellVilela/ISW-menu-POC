@@ -63,56 +63,94 @@ export interface CanvasNode {
   sourceId?: string;
   /** When false, entity-level result cache is off. Unset means off. */
   entityCacheEnabled?: boolean;
-  /** Output node only: fields pulled in directly from any table on the canvas, bypassing the join graph. */
-  directFields?: DirectFieldRef[];
-  /** Output node only: derived aggregate fields. */
-  customMetrics?: CustomMetric[];
+  /** Output node only: user-added computed fields (name + expression). */
+  derivedFields?: DerivedFieldDef[];
+  /** Output node only: parent/child relationships between two existing fields. */
+  hierarchyFields?: HierarchyFieldDef[];
+  /** Output node only: expression-based aggregate metrics, listed separately from Fields. */
+  customMetrics?: CustomMetricDef[];
   /** Output node only: capability overrides keyed by field row key (see `outputFieldRows`). */
   fieldCapabilities?: Record<string, FieldCapabilities>;
+  /** Output node only: display-label overrides keyed by field row key. */
+  fieldLabelOverrides?: Record<string, string>;
   /** Output node only: the simulated translation file currently attached, if any. */
   translationFile?: OutputTranslationFile;
 }
 
-/** A field pulled directly into the Output from a specific canvas node, independent of the join graph. */
-export interface DirectFieldRef {
-  id: string;
-  nodeId: string;
-  fieldName: string;
-}
-
-export type MetricAggregation = 'sum' | 'avg' | 'count' | 'min' | 'max';
-
-/** A user-defined aggregate field on the Output (e.g. "Total Revenue" = sum(Orders.amount)). */
-export interface CustomMetric {
+/** A user-defined computed field on the Output (e.g. "Full Name" = CONCAT(first_name, last_name)). */
+export interface DerivedFieldDef {
   id: string;
   name: string;
-  sourceField: string;
-  aggregation: MetricAggregation;
+  label: string;
+  expression: string;
 }
 
+/** A parent/child relationship between two existing fields (e.g. Country -> City) for drill-down. */
+export interface HierarchyFieldDef {
+  id: string;
+  label: string;
+  parentField: string;
+  childField: string;
+  labelField?: string;
+}
+
+/** A user-defined aggregate metric on the Output, listed separately from Fields (e.g. "Total Revenue"). */
+export interface CustomMetricDef {
+  id: string;
+  name: string;
+  expression: string;
+}
+
+/** The six capability toggles the real product exposes per field, edited in bulk. */
 export interface FieldCapabilities {
-  hidden?: boolean;
-  aggregatable?: boolean;
-  sortable?: boolean;
-  filterable?: boolean;
+  details?: boolean;
+  filtering?: boolean;
+  grouping?: boolean;
+  metrics?: boolean;
+  playing?: boolean;
+  rawData?: boolean;
+}
+
+/** Sensible defaults for a freshly-seen field: everything on except Playing, and Metrics off for Time fields. */
+export function defaultFieldCapabilities(type: string): FieldCapabilities {
+  const isTime = type.toLowerCase() === 'time';
+  return { details: true, filtering: true, grouping: true, metrics: !isTime, playing: false, rawData: true };
 }
 
 export interface OutputTranslationFile {
   fileName: string;
-  locale: string;
 }
 
-export type OutputFieldOrigin = 'derived' | 'direct' | 'metric';
+export type OutputFieldOrigin = 'native' | 'derived';
 
-/** A single row in the Output's final field list, resolved from the join graph plus any manual additions. */
+/** A single row in the Output's Fields list: the join graph's native fields plus any Derived Fields. */
 export interface OutputFieldRow {
   key: string;
   name: string;
+  label: string;
+  dataEntityLabel: string;
   type: string;
   origin: OutputFieldOrigin;
-  /** Present only for a `'direct'`/`'metric'` row whose backing entry can be removed. */
+  /** Derived rows only. */
+  expression?: string;
+  /** Present only for a `'derived'` row, which can be edited/removed. */
   removeId?: string;
   capabilities: FieldCapabilities;
+}
+
+/** A row in the Output's separate Custom Metrics list. */
+export interface CustomMetricRow {
+  key: string;
+  name: string;
+  expression: string;
+  removeId: string;
+}
+
+/** A candidate field to reference when building an expression, a hierarchy, or a metric. */
+export interface OutputFieldCandidate {
+  value: string;
+  name: string;
+  type: string;
 }
 
 export interface Point {
@@ -583,68 +621,62 @@ export function fieldsFromCanvasNodes(nodes: CanvasNode[]): FieldOption[] {
     .flatMap((node) => collectSourceFields(nodes, node.id));
 }
 
-export interface DirectFieldCandidate {
-  nodeId: string;
-  nodeLabel: string;
-  fieldName: string;
-  fieldType: string;
-}
-
-/** Every field on any table currently on the canvas, available to pull directly into the Output. */
-export function directFieldCandidates(nodes: CanvasNode[]): DirectFieldCandidate[] {
-  return nodes
-    .filter((node) => node.type === 'table')
-    .flatMap((node) =>
-      (node.fields ?? []).map((field) => ({
-        nodeId: node.id,
-        nodeLabel: node.customName?.trim() || node.label,
-        fieldName: field.name,
-        fieldType: field.type,
-      })),
-    );
-}
-
-/** Resolves the Output's final field list: the join graph's derived fields plus manual additions. */
-export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): OutputFieldRow[] {
-  const capabilities = output.fieldCapabilities ?? {};
-
-  const derived: OutputFieldRow[] = fieldsFromCanvasNodes(nodes).map((field) => ({
-    key: field.value,
+/** Every field available to reference from an expression, a hierarchy, or a metric. */
+export function outputFieldCandidates(nodes: CanvasNode[], output: CanvasNode): OutputFieldCandidate[] {
+  const native = fieldsFromCanvasNodes(nodes).map((field) => ({
+    value: field.value,
     name: field.name,
     type: field.type,
-    origin: 'derived',
-    capabilities: capabilities[field.value] ?? {},
+  }));
+  const derived = (output.derivedFields ?? []).map((def) => ({
+    value: `derived:${def.id}`,
+    name: def.name,
+    type: 'Attribute',
+  }));
+  return [...native, ...derived];
+}
+
+/** Resolves the Output's Fields list: the join graph's native fields plus any Derived Fields. */
+export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): OutputFieldRow[] {
+  const capabilities = output.fieldCapabilities ?? {};
+  const labelOverrides = output.fieldLabelOverrides ?? {};
+
+  const native: OutputFieldRow[] = fieldsFromCanvasNodes(nodes).map((field) => ({
+    key: field.value,
+    name: field.name,
+    label: labelOverrides[field.value] ?? field.name,
+    dataEntityLabel: field.entity,
+    type: field.type,
+    origin: 'native',
+    capabilities: capabilities[field.value] ?? defaultFieldCapabilities(field.type),
   }));
 
-  const candidatesByNode = new Map(nodes.map((node) => [node.id, node]));
-  const direct: OutputFieldRow[] = (output.directFields ?? []).flatMap((ref) => {
-    const source = candidatesByNode.get(ref.nodeId);
-    const field = source?.fields?.find((item) => item.name === ref.fieldName);
-    if (!source || !field) return [];
-    const key = `direct:${ref.id}`;
-    return [{
-      key,
-      name: field.name,
-      type: field.type,
-      origin: 'direct' as const,
-      removeId: ref.id,
-      capabilities: capabilities[key] ?? {},
-    }];
-  });
-
-  const metrics: OutputFieldRow[] = (output.customMetrics ?? []).map((metric) => {
-    const key = `metric:${metric.id}`;
+  const derived: OutputFieldRow[] = (output.derivedFields ?? []).map((def) => {
+    const key = `derived:${def.id}`;
     return {
       key,
-      name: metric.name,
-      type: 'Number',
-      origin: 'metric',
-      removeId: metric.id,
-      capabilities: capabilities[key] ?? {},
+      name: def.name,
+      label: labelOverrides[key] ?? def.label,
+      dataEntityLabel: '—',
+      type: 'Attribute',
+      origin: 'derived',
+      expression: def.expression,
+      removeId: def.id,
+      capabilities: capabilities[key] ?? defaultFieldCapabilities('Attribute'),
     };
   });
 
-  return [...derived, ...direct, ...metrics];
+  return [...native, ...derived];
+}
+
+/** Resolves the Output's separate Custom Metrics list. */
+export function outputCustomMetricRows(output: CanvasNode): CustomMetricRow[] {
+  return (output.customMetrics ?? []).map((metric) => ({
+    key: `metric:${metric.id}`,
+    name: metric.name,
+    expression: metric.expression,
+    removeId: metric.id,
+  }));
 }
 
 export interface OutputPreview {
@@ -1145,28 +1177,59 @@ export function useDataSourceCanvas() {
     nodes.value = removeNodeAndDependents(nodes.value, id);
   }
 
-  function addDirectField(nodeId: string, fieldName: string): void {
+  function addDerivedField(name: string, label: string, expression: string): void {
     const output = nodes.value.find(isOutputNode);
     if (!output) return;
-    output.directFields = [
-      ...(output.directFields ?? []),
-      { id: createId('direct'), nodeId, fieldName },
+    output.derivedFields = [
+      ...(output.derivedFields ?? []),
+      { id: createId('derived'), name, label, expression },
     ];
   }
 
-  function removeDirectField(id: string): void {
+  function updateDerivedField(id: string, name: string, label: string, expression: string): void {
     const output = nodes.value.find(isOutputNode);
-    if (!output?.directFields) return;
-    output.directFields = output.directFields.filter((ref) => ref.id !== id);
+    if (!output?.derivedFields) return;
+    output.derivedFields = output.derivedFields.map((def) =>
+      def.id === id ? { ...def, name, label, expression } : def,
+    );
   }
 
-  function addCustomMetric(name: string, sourceField: string, aggregation: MetricAggregation): void {
+  function removeDerivedField(id: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output?.derivedFields) return;
+    output.derivedFields = output.derivedFields.filter((def) => def.id !== id);
+  }
+
+  function addHierarchyField(label: string, parentField: string, childField: string, labelField?: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.hierarchyFields = [
+      ...(output.hierarchyFields ?? []),
+      { id: createId('hierarchy'), label, parentField, childField, labelField },
+    ];
+  }
+
+  function removeHierarchyField(id: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output?.hierarchyFields) return;
+    output.hierarchyFields = output.hierarchyFields.filter((def) => def.id !== id);
+  }
+
+  function addCustomMetric(name: string, expression: string): void {
     const output = nodes.value.find(isOutputNode);
     if (!output) return;
     output.customMetrics = [
       ...(output.customMetrics ?? []),
-      { id: createId('metric'), name, sourceField, aggregation },
+      { id: createId('metric'), name, expression },
     ];
+  }
+
+  function updateCustomMetric(id: string, name: string, expression: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output?.customMetrics) return;
+    output.customMetrics = output.customMetrics.map((metric) =>
+      metric.id === id ? { ...metric, name, expression } : metric,
+    );
   }
 
   function removeCustomMetric(id: string): void {
@@ -1175,10 +1238,16 @@ export function useDataSourceCanvas() {
     output.customMetrics = output.customMetrics.filter((metric) => metric.id !== id);
   }
 
-  function setFieldCapabilities(key: string, capabilities: FieldCapabilities): void {
+  function setFieldLabel(key: string, label: string): void {
     const output = nodes.value.find(isOutputNode);
     if (!output) return;
-    output.fieldCapabilities = { ...(output.fieldCapabilities ?? {}), [key]: capabilities };
+    output.fieldLabelOverrides = { ...(output.fieldLabelOverrides ?? {}), [key]: label };
+  }
+
+  function setBulkFieldCapabilities(patch: Record<string, FieldCapabilities>): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.fieldCapabilities = { ...(output.fieldCapabilities ?? {}), ...patch };
   }
 
   function setOutputTranslationFile(file: OutputTranslationFile | undefined): void {
@@ -1253,11 +1322,16 @@ export function useDataSourceCanvas() {
     setNodeName: committing(setNodeName),
     replaceTable: committing(replaceTable),
     removeNode: committing(removeNode),
-    addDirectField: committing(addDirectField),
-    removeDirectField: committing(removeDirectField),
+    addDerivedField: committing(addDerivedField),
+    updateDerivedField: committing(updateDerivedField),
+    removeDerivedField: committing(removeDerivedField),
+    addHierarchyField: committing(addHierarchyField),
+    removeHierarchyField: committing(removeHierarchyField),
     addCustomMetric: committing(addCustomMetric),
+    updateCustomMetric: committing(updateCustomMetric),
     removeCustomMetric: committing(removeCustomMetric),
-    setFieldCapabilities: committing(setFieldCapabilities),
+    setFieldLabel: committing(setFieldLabel),
+    setBulkFieldCapabilities: committing(setBulkFieldCapabilities),
     setOutputTranslationFile: committing(setOutputTranslationFile),
     clear: committing(clear),
     loadPreset: committing(loadPreset),

@@ -32,11 +32,16 @@
           :node="selectedOutput"
           :all-nodes="canvasNodes"
           @close="closeInspector"
-          @add-direct-field="({ nodeId, fieldName }) => canvasRef?.addDirectField(nodeId, fieldName)"
-          @remove-direct-field="(id) => canvasRef?.removeDirectField(id)"
-          @add-custom-metric="({ name, sourceField, aggregation }) => canvasRef?.addCustomMetric(name, sourceField, aggregation)"
+          @add-derived-field="({ name, label, expression }) => canvasRef?.addDerivedField(name, label, expression)"
+          @update-derived-field="({ id, name, label, expression }) => canvasRef?.updateDerivedField(id, name, label, expression)"
+          @remove-derived-field="(id) => canvasRef?.removeDerivedField(id)"
+          @add-hierarchy-field="({ label, parentField, childField, labelField }) => canvasRef?.addHierarchyField(label, parentField, childField, labelField)"
+          @remove-hierarchy-field="(id) => canvasRef?.removeHierarchyField(id)"
+          @add-custom-metric="({ name, expression }) => canvasRef?.addCustomMetric(name, expression)"
+          @update-custom-metric="({ id, name, expression }) => canvasRef?.updateCustomMetric(id, name, expression)"
           @remove-custom-metric="(id) => canvasRef?.removeCustomMetric(id)"
-          @set-field-capabilities="({ key, capabilities }) => canvasRef?.setFieldCapabilities(key, capabilities)"
+          @set-field-label="({ key, label }) => canvasRef?.setFieldLabel(key, label)"
+          @set-bulk-field-capabilities="(patch) => canvasRef?.setBulkFieldCapabilities(patch)"
           @set-translation-file="(file) => canvasRef?.setOutputTranslationFile(file)"
         />
         <EntityInspectorPanel
@@ -85,7 +90,6 @@ import SourcePanel from '~/components/datasource/SourcePanel.vue';
 import type {
   CanvasNode,
   FieldCapabilities,
-  MetricAggregation,
   OutputTranslationFile,
   TableRebindPatch,
 } from '~/composables/useDataSourceCanvas';
@@ -101,11 +105,16 @@ const catalogFocusId = ref('');
 const canvasRef = ref<{
   clearTableSelection: () => void;
   replaceTable: (id: string, patch: TableRebindPatch) => void;
-  addDirectField: (nodeId: string, fieldName: string) => void;
-  removeDirectField: (id: string) => void;
-  addCustomMetric: (name: string, sourceField: string, aggregation: MetricAggregation) => void;
+  addDerivedField: (name: string, label: string, expression: string) => void;
+  updateDerivedField: (id: string, name: string, label: string, expression: string) => void;
+  removeDerivedField: (id: string) => void;
+  addHierarchyField: (label: string, parentField: string, childField: string, labelField?: string) => void;
+  removeHierarchyField: (id: string) => void;
+  addCustomMetric: (name: string, expression: string) => void;
+  updateCustomMetric: (id: string, name: string, expression: string) => void;
   removeCustomMetric: (id: string) => void;
-  setFieldCapabilities: (key: string, capabilities: FieldCapabilities) => void;
+  setFieldLabel: (key: string, label: string) => void;
+  setBulkFieldCapabilities: (patch: Record<string, FieldCapabilities>) => void;
   setOutputTranslationFile: (file: OutputTranslationFile | undefined) => void;
 } | null>(null);
 
