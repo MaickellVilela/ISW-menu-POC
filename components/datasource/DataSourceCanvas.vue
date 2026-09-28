@@ -64,6 +64,12 @@ const {
   replaceTable,
   setNodeWidth,
   removeNode,
+  addDirectField,
+  removeDirectField,
+  addCustomMetric,
+  removeCustomMetric,
+  setFieldCapabilities,
+  setOutputTranslationFile,
   clear,
   loadPreset,
   tidyLayout,
@@ -77,6 +83,8 @@ const {
 const emit = defineEmits<{
   'update:usedTableIdentities': [identities: string[]];
   'update:selectedTable': [node: CanvasNodeModel | null];
+  'update:selectedOutput': [node: CanvasNodeModel | null];
+  'update:canvasNodes': [nodes: CanvasNodeModel[]];
   'open-filter-shortcut': [shortcut: CanvasFilterShortcut];
   save: [];
   configure: [];
@@ -88,6 +96,10 @@ const selectedTable = computed(() => {
   const node = selectedNodeId.value ? findNode(selectedNodeId.value) : undefined;
   return node?.type === 'table' ? node : null;
 });
+const selectedOutput = computed(() => {
+  const node = selectedNodeId.value ? findNode(selectedNodeId.value) : undefined;
+  return node?.type === 'output' ? node : null;
+});
 
 watch(usedTableIdentities, (identities) => {
   emit('update:usedTableIdentities', identities);
@@ -96,6 +108,14 @@ watch(usedTableIdentities, (identities) => {
 watch(selectedTable, (node) => {
   emit('update:selectedTable', node ?? null);
 }, { immediate: true });
+
+watch(selectedOutput, (node) => {
+  emit('update:selectedOutput', node ?? null);
+}, { immediate: true });
+
+watch(nodes, (value) => {
+  emit('update:canvasNodes', value);
+}, { immediate: true, deep: true });
 
 const route = useRoute();
 const filterMarks = ref<CanvasFilterMarkSnapshot>(readCanvasFilterMarks());
@@ -392,7 +412,7 @@ function onDrop(event: DragEvent): void {
 function onStartMove({ id, event }: { id: string; event: PointerEvent }): void {
   const node = findNode(id);
   if (!node) return;
-  selectedNodeId.value = node.type === 'table' ? id : null;
+  selectedNodeId.value = node.type === 'table' || node.type === 'output' ? id : null;
   const { x, y } = toSurfaceCoords(event);
   interaction.value = { mode: 'move', id, offsetX: x - node.x, offsetY: y - node.y };
   attachWindowListeners();
@@ -598,6 +618,12 @@ function clearTableSelection(): void {
 defineExpose({
   clearTableSelection,
   replaceTable,
+  addDirectField,
+  removeDirectField,
+  addCustomMetric,
+  removeCustomMetric,
+  setFieldCapabilities,
+  setOutputTranslationFile,
 });
 </script>
 

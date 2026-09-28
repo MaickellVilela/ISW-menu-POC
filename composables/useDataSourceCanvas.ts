@@ -63,6 +63,56 @@ export interface CanvasNode {
   sourceId?: string;
   /** When false, entity-level result cache is off. Unset means off. */
   entityCacheEnabled?: boolean;
+  /** Output node only: fields pulled in directly from any table on the canvas, bypassing the join graph. */
+  directFields?: DirectFieldRef[];
+  /** Output node only: derived aggregate fields. */
+  customMetrics?: CustomMetric[];
+  /** Output node only: capability overrides keyed by field row key (see `outputFieldRows`). */
+  fieldCapabilities?: Record<string, FieldCapabilities>;
+  /** Output node only: the simulated translation file currently attached, if any. */
+  translationFile?: OutputTranslationFile;
+}
+
+/** A field pulled directly into the Output from a specific canvas node, independent of the join graph. */
+export interface DirectFieldRef {
+  id: string;
+  nodeId: string;
+  fieldName: string;
+}
+
+export type MetricAggregation = 'sum' | 'avg' | 'count' | 'min' | 'max';
+
+/** A user-defined aggregate field on the Output (e.g. "Total Revenue" = sum(Orders.amount)). */
+export interface CustomMetric {
+  id: string;
+  name: string;
+  sourceField: string;
+  aggregation: MetricAggregation;
+}
+
+export interface FieldCapabilities {
+  hidden?: boolean;
+  aggregatable?: boolean;
+  sortable?: boolean;
+  filterable?: boolean;
+}
+
+export interface OutputTranslationFile {
+  fileName: string;
+  locale: string;
+}
+
+export type OutputFieldOrigin = 'derived' | 'direct' | 'metric';
+
+/** A single row in the Output's final field list, resolved from the join graph plus any manual additions. */
+export interface OutputFieldRow {
+  key: string;
+  name: string;
+  type: string;
+  origin: OutputFieldOrigin;
+  /** Present only for a `'direct'`/`'metric'` row whose backing entry can be removed. */
+  removeId?: string;
+  capabilities: FieldCapabilities;
 }
 
 export interface Point {
@@ -533,6 +583,70 @@ export function fieldsFromCanvasNodes(nodes: CanvasNode[]): FieldOption[] {
     .flatMap((node) => collectSourceFields(nodes, node.id));
 }
 
+export interface DirectFieldCandidate {
+  nodeId: string;
+  nodeLabel: string;
+  fieldName: string;
+  fieldType: string;
+}
+
+/** Every field on any table currently on the canvas, available to pull directly into the Output. */
+export function directFieldCandidates(nodes: CanvasNode[]): DirectFieldCandidate[] {
+  return nodes
+    .filter((node) => node.type === 'table')
+    .flatMap((node) =>
+      (node.fields ?? []).map((field) => ({
+        nodeId: node.id,
+        nodeLabel: node.customName?.trim() || node.label,
+        fieldName: field.name,
+        fieldType: field.type,
+      })),
+    );
+}
+
+/** Resolves the Output's final field list: the join graph's derived fields plus manual additions. */
+export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): OutputFieldRow[] {
+  const capabilities = output.fieldCapabilities ?? {};
+
+  const derived: OutputFieldRow[] = fieldsFromCanvasNodes(nodes).map((field) => ({
+    key: field.value,
+    name: field.name,
+    type: field.type,
+    origin: 'derived',
+    capabilities: capabilities[field.value] ?? {},
+  }));
+
+  const candidatesByNode = new Map(nodes.map((node) => [node.id, node]));
+  const direct: OutputFieldRow[] = (output.directFields ?? []).flatMap((ref) => {
+    const source = candidatesByNode.get(ref.nodeId);
+    const field = source?.fields?.find((item) => item.name === ref.fieldName);
+    if (!source || !field) return [];
+    const key = `direct:${ref.id}`;
+    return [{
+      key,
+      name: field.name,
+      type: field.type,
+      origin: 'direct' as const,
+      removeId: ref.id,
+      capabilities: capabilities[key] ?? {},
+    }];
+  });
+
+  const metrics: OutputFieldRow[] = (output.customMetrics ?? []).map((metric) => {
+    const key = `metric:${metric.id}`;
+    return {
+      key,
+      name: metric.name,
+      type: 'Number',
+      origin: 'metric',
+      removeId: metric.id,
+      capabilities: capabilities[key] ?? {},
+    };
+  });
+
+  return [...derived, ...direct, ...metrics];
+}
+
 export interface OutputPreview {
   columns: string[];
   rows: Record<string, string>[];
@@ -747,6 +861,27 @@ export function removeNodeAndDependents(nodes: CanvasNode[], id: string): Canvas
   return survivors;
 }
 
+/** The node (join or output) that a given node currently feeds, if any — a node has at most one. */
+export function findOutgoingConsumer(nodes: CanvasNode[], id: string): CanvasNode | undefined {
+  return nodes.find((node) => node.id !== id && node.inputs?.includes(id));
+}
+
+/**
+ * Detaches `id` from whatever it currently feeds, so it can be reconnected elsewhere
+ * (a node may only have one outgoing connection at a time). Reconnecting the output's
+ * own single input is a cheap in-place clear; a join can't survive with one side missing,
+ * so it — and anything that depends on it — is cascade-removed via `removeNodeAndDependents`.
+ */
+export function detachOutgoingConnection(nodes: CanvasNode[], id: string): CanvasNode[] {
+  const consumer = findOutgoingConsumer(nodes, id);
+  if (!consumer) return nodes;
+  if (consumer.type === 'output') {
+    consumer.inputs = [];
+    return nodes;
+  }
+  return removeNodeAndDependents(nodes, consumer.id);
+}
+
 /** True when joining these two ids would be valid (distinct, real, not the output, not already joined). */
 export function canJoin(nodes: CanvasNode[], leftId: string, rightId: string): boolean {
   if (leftId === rightId) return false;
@@ -919,6 +1054,8 @@ export function useDataSourceCanvas() {
 
   function joinNodes(leftId: string, rightId: string): CanvasNode | undefined {
     if (!canJoin(nodes.value, leftId, rightId)) return undefined;
+    nodes.value = detachOutgoingConnection(nodes.value, leftId);
+    nodes.value = detachOutgoingConnection(nodes.value, rightId);
     const left = findNode(leftId);
     const right = findNode(rightId);
     if (!left || !right) return undefined;
@@ -933,7 +1070,10 @@ export function useDataSourceCanvas() {
     const output = nodes.value.find(isOutputNode);
     const source = findNode(sourceId);
     if (!output || !source || source.type === 'output') return;
-    output.inputs = [sourceId];
+    if (output.inputs?.[0] === sourceId) return;
+    nodes.value = detachOutgoingConnection(nodes.value, sourceId);
+    const nextOutput = nodes.value.find(isOutputNode);
+    if (nextOutput) nextOutput.inputs = [sourceId];
   }
 
   function setJoinType(id: string, joinType: JoinType): void {
@@ -1005,6 +1145,48 @@ export function useDataSourceCanvas() {
     nodes.value = removeNodeAndDependents(nodes.value, id);
   }
 
+  function addDirectField(nodeId: string, fieldName: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.directFields = [
+      ...(output.directFields ?? []),
+      { id: createId('direct'), nodeId, fieldName },
+    ];
+  }
+
+  function removeDirectField(id: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output?.directFields) return;
+    output.directFields = output.directFields.filter((ref) => ref.id !== id);
+  }
+
+  function addCustomMetric(name: string, sourceField: string, aggregation: MetricAggregation): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.customMetrics = [
+      ...(output.customMetrics ?? []),
+      { id: createId('metric'), name, sourceField, aggregation },
+    ];
+  }
+
+  function removeCustomMetric(id: string): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output?.customMetrics) return;
+    output.customMetrics = output.customMetrics.filter((metric) => metric.id !== id);
+  }
+
+  function setFieldCapabilities(key: string, capabilities: FieldCapabilities): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.fieldCapabilities = { ...(output.fieldCapabilities ?? {}), [key]: capabilities };
+  }
+
+  function setOutputTranslationFile(file: OutputTranslationFile | undefined): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    output.translationFile = file;
+  }
+
   function clear(): void {
     nodes.value = nodes.value.filter(isOutputNode);
     ensureOutput();
@@ -1071,6 +1253,12 @@ export function useDataSourceCanvas() {
     setNodeName: committing(setNodeName),
     replaceTable: committing(replaceTable),
     removeNode: committing(removeNode),
+    addDirectField: committing(addDirectField),
+    removeDirectField: committing(removeDirectField),
+    addCustomMetric: committing(addCustomMetric),
+    removeCustomMetric: committing(removeCustomMetric),
+    setFieldCapabilities: committing(setFieldCapabilities),
+    setOutputTranslationFile: committing(setOutputTranslationFile),
     clear: committing(clear),
     loadPreset: committing(loadPreset),
     tidyLayout: committing(tidyLayout),

@@ -2,7 +2,9 @@
 import { computed } from 'vue';
 import {
   connectionHasUsedTable,
-  matchingCatalogCaption,
+  connectionUsesSchemas,
+  matchingCatalogCaptionGroups,
+  schemasForConnection,
   searchConnections,
   type DataSourceConnection,
 } from '~/composables/dataSourceCatalog';
@@ -24,11 +26,19 @@ const emit = defineEmits<{
   'update:searchQuery': [query: string];
 }>();
 
+/** Items immediately below the connection: schemas when it has them, else entities directly. */
+function directChildCount(connection: DataSourceConnection): number {
+  return connectionUsesSchemas(connection)
+    ? schemasForConnection(connection).length
+    : connection.entityKeys.length;
+}
+
 const visibleMatches = computed(() => {
   void props.catalogRevision;
   return searchConnections(props.connections, props.searchQuery).map((match) => ({
     ...match,
-    caption: matchingCatalogCaption(match),
+    captionGroups: matchingCatalogCaptionGroups(match),
+    childCount: directChildCount(match.connection),
     inUse: connectionHasUsedTable(match.connection, props.usedTableIdentities),
   }));
 });
@@ -87,13 +97,29 @@ const visibleMatches = computed(() => {
               <HighlightedText :text="match.connection.name" :query="searchQuery" />
             </span>
             <span
-              v-if="match.caption"
-              class="mt-0.5 block truncate text-[11px] text-[#7A7A7A]"
+              v-if="match.captionGroups.length > 0"
+              class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5"
             >
-              <HighlightedText :text="match.caption" :query="searchQuery" />
+              <span
+                v-for="group in match.captionGroups"
+                :key="group.kind"
+                class="inline-flex min-w-0 items-center gap-1 text-[11px] text-[#7A7A7A]"
+              >
+                <span
+                  class="flex-shrink-0 rounded-full px-1.5 py-0 text-[9px] font-semibold"
+                  :class="
+                    group.kind === 'schema'
+                      ? 'bg-[#F1ECFA] text-[#3B1770]'
+                      : 'bg-[#EEF0F3] text-[#52525B]'
+                  "
+                >
+                  {{ group.kind === 'schema' ? 'Schema' : 'Table' }}
+                </span>
+                <span class="truncate"><HighlightedText :text="group.text" :query="searchQuery" /></span>
+              </span>
             </span>
           </span>
-          <span class="text-[10px] tabular-nums text-[#9A9A9A]">{{ match.connection.entityKeys.length }}</span>
+          <span class="text-[10px] tabular-nums text-[#9A9A9A]">{{ match.childCount }}</span>
           <svg
             viewBox="0 0 24 24"
             class="h-3 w-3 flex-shrink-0 text-[#52525B] transition-transform group-hover:translate-x-0.5 group-hover:text-[#3B1770]"

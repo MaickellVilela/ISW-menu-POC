@@ -90,13 +90,66 @@ function onRunCompleted(itemId: string) {
   }
 }
 
+type ResponseRating = 'up' | 'down';
+
+/** Latest assistant reply, ignoring setup cards and thinking runs. */
+function findLatestAssistantId(flowItems: FlowItem[]): string | null {
+  for (let index = flowItems.length - 1; index >= 0; index -= 1) {
+    if (flowItems[index]?.kind === 'assistant-text') return flowItems[index].id;
+  }
+  return null;
+}
+
+/** A finished assistant reply blocks the next prompt until it is rated. */
+function isResponseRatingRequired(
+  latestAssistantId: string | null,
+  responseRatings: Readonly<Record<string, ResponseRating>>,
+  agentRunning: boolean,
+): boolean {
+  if (agentRunning || !latestAssistantId) return false;
+  return responseRatings[latestAssistantId] === undefined;
+}
+
+function precedingUserText(flowItems: FlowItem[], itemId: string): string {
+  const index = flowItems.findIndex((item) => item.id === itemId);
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const item = flowItems[cursor];
+    if (item?.kind === 'user-text' && item.text?.trim()) return item.text;
+  }
+  return '';
+}
+
+function ratingCaption(rating: ResponseRating): string {
+  return rating === 'up' ? 'Marked helpful' : 'Marked not helpful';
+}
+
+function captionFor(itemId: string): string {
+  const rating = ratings.value[itemId];
+  return rating ? ratingCaption(rating) : '';
+}
+
 const draft = ref('');
 const scrollArea = ref<HTMLElement | null>(null);
+const composer = ref<HTMLTextAreaElement | null>(null);
+const ratings = ref<Record<string, ResponseRating>>({});
+const copiedId = ref<string | null>(null);
+const originalOpenId = ref<string | null>(null);
+const skipRatingGate = ref(false);
 
-const canSend = computed(() => !isAgentRunning.value && draft.value.trim().length > 0);
-const composerPlaceholder = computed(() =>
-  isAgentRunning.value ? 'Working on it…' : 'Ask anything…',
+const ratingRequired = computed(
+  () =>
+    !skipRatingGate.value &&
+    isResponseRatingRequired(findLatestAssistantId(items.value), ratings.value, isAgentRunning.value),
 );
+
+const canSend = computed(
+  () => !isAgentRunning.value && !ratingRequired.value && draft.value.trim().length > 0,
+);
+const composerPlaceholder = computed(() => {
+  if (isAgentRunning.value) return 'Working on it…';
+  if (ratingRequired.value) return 'Rate this response to continue';
+  return 'Ask anything…';
+});
 
 async function scrollToBottom() {
   await nextTick();
@@ -119,9 +172,20 @@ watch(isAgentRunning, (running) => {
   if (running) followTimer = window.setInterval(scrollToBottom, 400);
 });
 
-onBeforeUnmount(stopFollowing);
+let copyTimer: number | null = null;
+
+function clearCopyTimer(): void {
+  if (copyTimer !== null) window.clearTimeout(copyTimer);
+  copyTimer = null;
+}
+
+onBeforeUnmount(() => {
+  stopFollowing();
+  clearCopyTimer();
+});
 
 function ask(question: string) {
+  if (ratingRequired.value || isAgentRunning.value) return;
   sendFreeText(question);
   draft.value = '';
 }
@@ -132,6 +196,45 @@ function onSend() {
   sendFreeText(text);
   if (detectsEditIntent(text)) emit('iterate');
   draft.value = '';
+}
+
+async function rateResponse(itemId: string, rating: ResponseRating): Promise<void> {
+  const wasGating = findLatestAssistantId(items.value) === itemId && !ratings.value[itemId];
+  ratings.value = { ...ratings.value, [itemId]: rating };
+  if (!wasGating) return;
+  await nextTick();
+  composer.value?.focus();
+}
+
+async function copyResponse(item: FlowItem): Promise<void> {
+  const text = item.text?.trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    return;
+  }
+  copiedId.value = item.id;
+  clearCopyTimer();
+  copyTimer = window.setTimeout(() => {
+    if (copiedId.value === item.id) copiedId.value = null;
+    copyTimer = null;
+  }, 1500);
+}
+
+function toggleOriginal(itemId: string): void {
+  originalOpenId.value = originalOpenId.value === itemId ? null : itemId;
+}
+
+function reloadResponse(item: FlowItem): void {
+  if (ratingRequired.value || isAgentRunning.value) return;
+  const text = precedingUserText(items.value, item.id);
+  if (!text) return;
+  sendFreeText(text);
+}
+
+function canReload(item: FlowItem): boolean {
+  return !ratingRequired.value && !isAgentRunning.value && precedingUserText(items.value, item.id).length > 0;
 }
 
 function setupHeadline(item: FlowItem): string {
@@ -303,10 +406,154 @@ defineExpose({ openWizard });
       <div ref="scrollArea" class="mx-auto w-full max-w-3xl flex-1 space-y-4 overflow-y-auto px-4 py-6">
         <template v-for="item in items" :key="item.id">
           <!-- Assistant message -->
-          <div v-if="item.kind === 'assistant-text'" class="flex justify-start">
-            <div class="max-w-[85%] rounded-2xl rounded-bl-sm bg-[#F5F1FC] px-3.5 py-2 text-sm leading-relaxed text-[#25262E]">
-              {{ item.text }}
+          <div v-if="item.kind === 'assistant-text'">
+            <div class="flex justify-start">
+              <div class="max-w-[85%]">
+                <div class="w-fit max-w-full whitespace-pre-line rounded-2xl rounded-bl-sm bg-[#F5F1FC] px-3.5 py-2 text-sm leading-relaxed text-[#25262E]">
+                  {{ item.text }}
+                </div>
+
+                <div class="mt-1.5 flex items-center gap-0.5 text-[#3D4C66]">
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                    title="Reload response"
+                    aria-label="Reload response"
+                    :disabled="!canReload(item)"
+                    @click="reloadResponse(item)"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <path d="M20 12a8 8 0 1 1-2.3-5.7" stroke-linecap="round" />
+                      <path d="M20 4v5h-5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
+                    :class="ratings[item.id] === 'up' ? 'text-[#3B1770]' : ''"
+                    title="Helpful"
+                    :aria-label="ratings[item.id] === 'up' ? 'Marked helpful' : 'Mark as helpful'"
+                    :aria-pressed="ratings[item.id] === 'up'"
+                    @click="rateResponse(item.id, 'up')"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <path
+                        d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
+                        stroke-linejoin="round"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
+                    :class="ratings[item.id] === 'down' ? 'text-[#565660]' : ''"
+                    title="Not helpful"
+                    :aria-label="ratings[item.id] === 'down' ? 'Marked not helpful' : 'Mark as not helpful'"
+                    :aria-pressed="ratings[item.id] === 'down'"
+                    @click="rateResponse(item.id, 'down')"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4 rotate-180" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <path
+                        d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
+                        stroke-linejoin="round"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
+                    :title="copiedId === item.id ? 'Copied' : 'Copy response'"
+                    :aria-label="copiedId === item.id ? 'Copied' : 'Copy response'"
+                    @click="copyResponse(item)"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <rect x="8" y="8" width="11" height="11" rx="2" />
+                      <path d="M5 15V6a2 2 0 0 1 2-2h9" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-md font-mono text-[13px] leading-none transition-colors hover:bg-[#F1F1F1]"
+                    :class="originalOpenId === item.id ? 'bg-[#F1F1F1]' : ''"
+                    title="View original response"
+                    :aria-label="originalOpenId === item.id ? 'Hide original response' : 'View original response'"
+                    :aria-pressed="originalOpenId === item.id"
+                    @click="toggleOriginal(item.id)"
+                  >
+                    { }
+                  </button>
+                </div>
+
+                <pre
+                  v-if="originalOpenId === item.id"
+                  class="mt-1.5 whitespace-pre-wrap rounded-lg bg-[#F7F7F8] px-3 py-2 font-mono text-xs leading-relaxed text-[#25262E]"
+                >{{ item.text }}</pre>
+
+                <p v-if="ratings[item.id]" class="mt-1.5 flex items-center gap-1 text-xs text-[#6B6B6B]">
+                  <svg viewBox="0 0 24 24" class="h-3 w-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  {{ captionFor(item.id) }}
+                </p>
+              </div>
             </div>
+
+            <!-- The gate: full-width and elevated so it reads as the screen's next required action, not a footnote on the reply. -->
+            <section
+              v-if="!skipRatingGate && !ratings[item.id] && findLatestAssistantId(items) === item.id && !isAgentRunning"
+              :aria-labelledby="`quality-prompt-title-${item.id}`"
+              class="rating-prompt-enter relative mt-3 w-full rounded-2xl bg-[#3B1770] p-5"
+            >
+              <!-- Caret ties the card back to the thumbs icons it echoes, like a tooltip pointing up at its anchor. -->
+              <span class="absolute -top-1.5 left-14 h-3 w-3 rotate-45 rounded-tl-[2px] bg-[#3B1770]" aria-hidden="true" />
+
+              <h2 :id="`quality-prompt-title-${item.id}`" class="text-base font-semibold text-white">
+                Was this response helpful?
+              </h2>
+              <p class="mt-0.5 text-sm text-[#D9C9F0]">Choose one to continue.</p>
+              <div class="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  class="group flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#E2E2E2] bg-white text-sm font-semibold text-[#25262E] transition-all hover:border-[#3B1770] hover:bg-[#F8F6FC] active:scale-[0.98]"
+                  @click="rateResponse(item.id, 'up')"
+                >
+                  <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0 text-[#3B1770]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <path
+                      d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  Helpful
+                </button>
+                <button
+                  type="button"
+                  class="group flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#E2E2E2] bg-white text-sm font-semibold text-[#25262E] transition-all hover:border-[#8B8B93] hover:bg-[#F7F7F8] active:scale-[0.98]"
+                  @click="rateResponse(item.id, 'down')"
+                >
+                  <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0 rotate-180 text-[#6B6B6B]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <path
+                      d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  Not helpful
+                </button>
+              </div>
+
+              <label class="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-[#D9C9F0]">
+                <input
+                  v-model="skipRatingGate"
+                  type="checkbox"
+                  class="h-3.5 w-3.5 cursor-pointer rounded-sm"
+                  style="accent-color: #ffffff"
+                />
+                Don't show this again
+              </label>
+            </section>
           </div>
 
           <!-- User message -->
@@ -350,7 +597,7 @@ defineExpose({ openWizard });
         </template>
 
         <!-- Suggested questions about the new data source -->
-        <div v-if="suggestedQuestions.length" class="pt-1">
+        <div v-if="suggestedQuestions.length && !ratingRequired" class="pt-1">
           <p class="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">Ask about this data source</p>
           <div class="flex flex-col items-start gap-2">
             <button
@@ -369,13 +616,15 @@ defineExpose({ openWizard });
       <!-- Composer -->
       <div class="mx-auto w-full max-w-3xl flex-shrink-0 p-4">
         <div
-          class="flex items-center gap-2 rounded-full border-2 border-[#C9B8E8] bg-white py-1.5 pl-5 pr-1.5 transition-colors focus-within:border-[#8B5CF6]"
+          class="flex items-center gap-2 rounded-full border-2 bg-white py-1.5 pl-5 pr-1.5 transition-colors"
+          :class="ratingRequired ? 'border-[#E2E2E2]' : 'border-[#C9B8E8] focus-within:border-[#8B5CF6]'"
         >
           <textarea
+            ref="composer"
             v-model="draft"
             rows="1"
             :placeholder="composerPlaceholder"
-            :disabled="isAgentRunning"
+            :disabled="isAgentRunning || ratingRequired"
             class="max-h-28 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-5 text-[#25262E] placeholder:text-[#9A9A9A] focus:outline-none disabled:cursor-not-allowed"
             @keydown.enter.exact.prevent="onSend"
           ></textarea>
@@ -407,3 +656,26 @@ defineExpose({ openWizard });
     />
   </div>
 </template>
+
+<style scoped>
+@keyframes rating-prompt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rating-prompt-enter {
+  animation: rating-prompt-enter 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rating-prompt-enter {
+    animation: none;
+  }
+}
+</style>

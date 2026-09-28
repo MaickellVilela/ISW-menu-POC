@@ -304,15 +304,29 @@ export function matchingEntityCaption(entities: SourceItem[], limit = 3): string
   return remaining > 0 ? `${listed} +${remaining}` : listed;
 }
 
-export function matchingCatalogCaption(match: ConnectionSearchMatch, limit = 3): string {
-  if (match.matchingEntities.length > 0) {
-    return matchingEntityCaption(match.matchingEntities, limit);
+/** One labeled group of matched names for a connection-level search caption, tagged by result type. */
+export interface CatalogCaptionGroup {
+  kind: 'schema' | 'entity';
+  text: string;
+}
+
+/**
+ * Groups a connection's matches by result type instead of picking one — a search term can match a
+ * schema name and an unrelated table name at once, and the caller needs to show both distinctly
+ * rather than silently dropping one (previously `matchingCatalogCaption` favored entities only).
+ */
+export function matchingCatalogCaptionGroups(match: ConnectionSearchMatch, limit = 3): CatalogCaptionGroup[] {
+  const groups: CatalogCaptionGroup[] = [];
+  if (match.matchingSchemas.length > 0) {
+    const names = match.matchingSchemas.slice(0, limit).map((schema) => schema.name);
+    const remaining = match.matchingSchemas.length - names.length;
+    const listed = names.join(', ');
+    groups.push({ kind: 'schema', text: remaining > 0 ? `${listed} +${remaining}` : listed });
   }
-  if (match.matchingSchemas.length === 0) return '';
-  const names = match.matchingSchemas.slice(0, limit).map((schema) => schema.name);
-  const remaining = match.matchingSchemas.length - names.length;
-  const listed = names.join(', ');
-  return remaining > 0 ? `${listed} +${remaining}` : listed;
+  if (match.matchingEntities.length > 0) {
+    groups.push({ kind: 'entity', text: matchingEntityCaption(match.matchingEntities, limit) });
+  }
+  return groups;
 }
 
 export function schemaHasUsedTable(

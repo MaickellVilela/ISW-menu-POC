@@ -208,7 +208,15 @@ export function useDataSourceFlow() {
   const showStarterPrompts = computed(() => items.value.length === 0);
 
   function start(): void {
-    items.value = [];
+    items.value = [
+      assistantText(
+        "Your data source is ready. I've connected public.marketing_campaigns and public.orders via the Marketing data connection. You can now query across both tables.",
+      ),
+      userText('How is budget distributed by target segment for campaigns ending in 2026?'),
+      assistantText(
+        'For campaigns ending in 2026, budget is distributed like this:\n• Enterprise: $80.00K\n• SMB: $45.00K\n• Consumer: $10.00K\n\nEnterprise has the largest budget allocation.',
+      ),
+    ];
     isWizardOpen.value = false;
     suggestedQuestions.value = [];
     latestSetup.value = null;

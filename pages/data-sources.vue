@@ -16,6 +16,8 @@
           ref="canvasRef"
           @update:used-table-identities="usedTableIdentities = $event"
           @update:selected-table="selectedTable = $event"
+          @update:selected-output="selectedOutput = $event"
+          @update:canvas-nodes="canvasNodes = $event"
           @open-filter-shortcut="openFilterShortcut"
           @configure="onWorkspaceSection('settings')"
         />
@@ -23,10 +25,22 @@
 
       <aside
         class="w-[300px] flex-shrink-0 bg-white lg:w-[340px]"
-        :aria-label="selectedTable ? 'Entity details' : 'Source browser'"
+        :aria-label="selectedOutput ? 'Output details' : selectedTable ? 'Entity details' : 'Source browser'"
       >
+        <OutputInspectorPanel
+          v-if="selectedOutput"
+          :node="selectedOutput"
+          :all-nodes="canvasNodes"
+          @close="closeInspector"
+          @add-direct-field="({ nodeId, fieldName }) => canvasRef?.addDirectField(nodeId, fieldName)"
+          @remove-direct-field="(id) => canvasRef?.removeDirectField(id)"
+          @add-custom-metric="({ name, sourceField, aggregation }) => canvasRef?.addCustomMetric(name, sourceField, aggregation)"
+          @remove-custom-metric="(id) => canvasRef?.removeCustomMetric(id)"
+          @set-field-capabilities="({ key, capabilities }) => canvasRef?.setFieldCapabilities(key, capabilities)"
+          @set-translation-file="(file) => canvasRef?.setOutputTranslationFile(file)"
+        />
         <EntityInspectorPanel
-          v-if="selectedTable"
+          v-else-if="selectedTable"
           :node="selectedTable"
           @close="closeInspector"
           @apply="applyEntityDetails"
@@ -66,18 +80,33 @@ import DataSourceCanvas from '~/components/datasource/DataSourceCanvas.vue';
 import DataSourceSettingsPanel from '~/components/datasource/DataSourceSettingsPanel.vue';
 import DataSourceWorkspaceHeader from '~/components/datasource/DataSourceWorkspaceHeader.vue';
 import EntityInspectorPanel from '~/components/datasource/EntityInspectorPanel.vue';
+import OutputInspectorPanel from '~/components/datasource/OutputInspectorPanel.vue';
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
-import type { CanvasNode, TableRebindPatch } from '~/composables/useDataSourceCanvas';
+import type {
+  CanvasNode,
+  FieldCapabilities,
+  MetricAggregation,
+  OutputTranslationFile,
+  TableRebindPatch,
+} from '~/composables/useDataSourceCanvas';
 
 const route = useRoute();
 const router = useRouter();
 
 const usedTableIdentities = ref<string[]>([]);
 const selectedTable = ref<CanvasNode | null>(null);
+const selectedOutput = ref<CanvasNode | null>(null);
+const canvasNodes = ref<CanvasNode[]>([]);
 const catalogFocusId = ref('');
 const canvasRef = ref<{
   clearTableSelection: () => void;
   replaceTable: (id: string, patch: TableRebindPatch) => void;
+  addDirectField: (nodeId: string, fieldName: string) => void;
+  removeDirectField: (id: string) => void;
+  addCustomMetric: (name: string, sourceField: string, aggregation: MetricAggregation) => void;
+  removeCustomMetric: (id: string) => void;
+  setFieldCapabilities: (key: string, capabilities: FieldCapabilities) => void;
+  setOutputTranslationFile: (file: OutputTranslationFile | undefined) => void;
 } | null>(null);
 
 function closeInspector(): void {
