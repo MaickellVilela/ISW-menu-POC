@@ -22,8 +22,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  'add-derived-field': [payload: { name: string; label: string; expression: string }];
-  'update-derived-field': [payload: { id: string; name: string; label: string; expression: string }];
+  'add-derived-field': [payload: { name: string; expression: string }];
+  'update-derived-field': [payload: { id: string; name: string; expression: string }];
   'remove-derived-field': [id: string];
   'add-hierarchy-field': [payload: { label: string; parentField: string; childField: string; labelField?: string }];
   'remove-hierarchy-field': [id: string];
@@ -77,10 +77,10 @@ function removeField(row: { origin: string; removeId?: string }): void {
   if (row.removeId) emit('remove-derived-field', row.removeId);
 }
 
-function openDerivedFieldModal(row?: { removeId?: string; name: string; label: string; expression?: string }): void {
+function openDerivedFieldModal(row?: { removeId?: string; name: string; expression?: string }): void {
   expressionModal.value = {
     mode: 'derived-field',
-    editing: row?.removeId ? { id: row.removeId, name: row.name, label: row.label, expression: row.expression ?? '' } : null,
+    editing: row?.removeId ? { id: row.removeId, name: row.name, expression: row.expression ?? '' } : null,
   };
 }
 
@@ -91,9 +91,9 @@ function openCustomMetricModal(row?: { removeId: string; name: string; expressio
   };
 }
 
-function onSaveDerivedField(payload: { id?: string; name: string; label: string; expression: string }): void {
-  if (payload.id) emit('update-derived-field', { id: payload.id, name: payload.name, label: payload.label, expression: payload.expression });
-  else emit('add-derived-field', { name: payload.name, label: payload.label, expression: payload.expression });
+function onSaveDerivedField(payload: { id?: string; name: string; expression: string }): void {
+  if (payload.id) emit('update-derived-field', { id: payload.id, name: payload.name, expression: payload.expression });
+  else emit('add-derived-field', { name: payload.name, expression: payload.expression });
   expressionModal.value = null;
 }
 

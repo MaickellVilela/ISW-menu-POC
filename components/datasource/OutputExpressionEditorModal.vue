@@ -7,7 +7,6 @@ export type ExpressionEditorMode = 'derived-field' | 'custom-metric';
 export interface ExpressionEditorDraft {
   id?: string;
   name: string;
-  label?: string;
   expression: string;
 }
 
@@ -15,35 +14,94 @@ interface SqlOperation {
   name: string;
   signature: string;
   snippet: string;
-  description: string;
+  /** A leading glyph shown before the name. Falls back to the generic "fx" tag when absent. */
+  symbol?: string;
 }
+
+/** Comparison operators — these have real, universally-recognized symbols. */
+const RELATIONAL_OPERATORS: SqlOperation[] = [
+  { name: 'Equal to', signature: 'leftoperand = rightoperand', snippet: ' = ', symbol: '=' },
+  { name: 'Not equal to', signature: 'leftoperand <> rightoperand', snippet: ' <> ', symbol: '≠' },
+  { name: 'Greater than', signature: 'leftoperand > rightoperand', snippet: ' > ', symbol: '>' },
+  { name: 'Greater than or equal to', signature: 'leftoperand >= rightoperand', snippet: ' >= ', symbol: '≥' },
+  { name: 'Less than', signature: 'leftoperand < rightoperand', snippet: ' < ', symbol: '<' },
+  { name: 'Less than or equal to', signature: 'leftoperand <= rightoperand', snippet: ' <= ', symbol: '≤' },
+];
+
+/** Logical operators — also have well-known symbols. */
+const LOGICAL_OPERATORS: SqlOperation[] = [
+  { name: 'And', signature: 'condition AND condition', snippet: ' AND ', symbol: '∧' },
+  { name: 'Or', signature: 'condition OR condition', snippet: ' OR ', symbol: '∨' },
+  { name: 'Not', signature: 'NOT condition', snippet: 'NOT ', symbol: '¬' },
+];
 
 /** Per-row SQL functions — valid in both a Derived Field and a Custom Metric expression. */
 const ROW_LEVEL_FUNCTIONS: SqlOperation[] = [
-  { name: 'UPPER', signature: 'UPPER(text)', snippet: 'UPPER()', description: 'Converts text to uppercase' },
-  { name: 'LOWER', signature: 'LOWER(text)', snippet: 'LOWER()', description: 'Converts text to lowercase' },
-  { name: 'TRIM', signature: 'TRIM(text)', snippet: 'TRIM()', description: 'Removes leading/trailing spaces' },
-  { name: 'CONCAT', signature: 'CONCAT(text1, text2)', snippet: 'CONCAT(, )', description: 'Joins text values' },
-  { name: 'SUBSTRING', signature: 'SUBSTRING(text, start, length)', snippet: 'SUBSTRING(, , )', description: 'Extracts part of a text value' },
-  { name: 'ROUND', signature: 'ROUND(number, decimals)', snippet: 'ROUND(, 2)', description: 'Rounds a number' },
-  { name: 'ABS', signature: 'ABS(number)', snippet: 'ABS()', description: 'Absolute value' },
-  { name: 'COALESCE', signature: 'COALESCE(value1, value2)', snippet: 'COALESCE(, )', description: 'First non-null value' },
-  { name: 'CASE WHEN', signature: 'CASE WHEN condition THEN value ELSE value END', snippet: 'CASE WHEN  THEN  ELSE  END', description: 'Conditional value' },
-  { name: 'DATEADD', signature: "DATEADD(interval, number, date)", snippet: "DATEADD(day, 1, )", description: 'Adds an interval to a date' },
-  { name: 'DATEDIFF', signature: 'DATEDIFF(interval, date1, date2)', snippet: 'DATEDIFF(day, , )', description: 'Difference between two dates' },
+  { name: 'UPPER', signature: 'UPPER(text)', snippet: 'UPPER()' },
+  { name: 'LOWER', signature: 'LOWER(text)', snippet: 'LOWER()' },
+  { name: 'TRIM', signature: 'TRIM(text)', snippet: 'TRIM()' },
+  { name: 'CONCAT', signature: 'CONCAT(text1, text2)', snippet: 'CONCAT(, )' },
+  { name: 'SUBSTRING', signature: 'SUBSTRING(text, start, length)', snippet: 'SUBSTRING(, , )' },
+  { name: 'ROUND', signature: 'ROUND(number, decimals)', snippet: 'ROUND(, 2)' },
+  { name: 'ABS', signature: 'ABS(number)', snippet: 'ABS()' },
+  { name: 'COALESCE', signature: 'COALESCE(value1, value2)', snippet: 'COALESCE(, )' },
+  { name: 'CASE WHEN', signature: 'CASE WHEN condition THEN value ELSE value END', snippet: 'CASE WHEN  THEN  ELSE  END' },
+  { name: 'DATEADD', signature: 'DATEADD(interval, number, date)', snippet: 'DATEADD(day, 1, )' },
+  { name: 'DATEDIFF', signature: 'DATEDIFF(interval, date1, date2)', snippet: 'DATEDIFF(day, , )' },
 ];
 
 /** Aggregate SQL functions — only valid across rows, so only offered for a Custom Metric. */
 const AGGREGATE_FUNCTIONS: SqlOperation[] = [
-  { name: 'SUM', signature: 'SUM(number)', snippet: 'SUM()', description: 'Sum across rows' },
-  { name: 'AVG', signature: 'AVG(number)', snippet: 'AVG()', description: 'Average across rows' },
-  { name: 'COUNT', signature: 'COUNT(value)', snippet: 'COUNT()', description: 'Count of rows' },
-  { name: 'COUNT DISTINCT', signature: 'COUNT(DISTINCT value)', snippet: 'COUNT(DISTINCT )', description: 'Count of unique values' },
-  { name: 'MIN', signature: 'MIN(value)', snippet: 'MIN()', description: 'Smallest value' },
-  { name: 'MAX', signature: 'MAX(value)', snippet: 'MAX()', description: 'Largest value' },
+  { name: 'SUM', signature: 'SUM(number)', snippet: 'SUM()' },
+  { name: 'AVG', signature: 'AVG(number)', snippet: 'AVG()' },
+  { name: 'COUNT', signature: 'COUNT(value)', snippet: 'COUNT()' },
+  { name: 'COUNT DISTINCT', signature: 'COUNT(DISTINCT value)', snippet: 'COUNT(DISTINCT )' },
+  { name: 'MIN', signature: 'MIN(value)', snippet: 'MIN()' },
+  { name: 'MAX', signature: 'MAX(value)', snippet: 'MAX()' },
 ];
 
 const TYPE_BADGE: Record<string, string> = { Attribute: 'ABC', Number: '123', Time: 'DATE' };
+
+/** Individual keyword tokens a function's SQL might contain — highlighted like SUBSTRING/UPPER/etc. */
+const HIGHLIGHT_KEYWORDS = ['CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'AND', 'OR', 'NOT', 'IS', 'NULL', 'IN', 'LIKE', 'BETWEEN', 'DISTINCT', 'AS'];
+/** Function names recognized by the highlighter, built from every catalog entry (minus multi-word phrases already covered by keywords). */
+const HIGHLIGHT_FUNCTIONS = [...ROW_LEVEL_FUNCTIONS, ...AGGREGATE_FUNCTIONS]
+  .map((op) => op.name)
+  .filter((name) => !name.includes(' '));
+
+const SQL_TOKEN_PATTERN = /('(?:[^']|'')*')|("(?:[^"]|"")*")|(\d+(?:\.\d+)?)|(<>|!=|>=|<=)|([=<>+\-*/%])|([(),])|([A-Za-z_][A-Za-z0-9_]*)/g;
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Tokenizes SQL-ish text into highlighted spans: keywords, our catalog functions, operators, strings, numbers, quoted identifiers. */
+function highlightSql(text: string): string {
+  const functionSet = new Set(HIGHLIGHT_FUNCTIONS.map((name) => name.toUpperCase()));
+  const keywordSet = new Set(HIGHLIGHT_KEYWORDS);
+  let output = '';
+  let lastIndex = 0;
+  SQL_TOKEN_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SQL_TOKEN_PATTERN.exec(text))) {
+    output += escapeHtml(text.slice(lastIndex, match.index));
+    const [, stringLit, quotedIdent, number, multiOp, singleOp, punct, word] = match;
+    if (stringLit) output += `<span class="text-[#1A7F37]">${escapeHtml(stringLit)}</span>`;
+    else if (quotedIdent) output += `<span class="text-[#0B5A8C]">${escapeHtml(quotedIdent)}</span>`;
+    else if (number) output += `<span class="text-[#9A5B13]">${escapeHtml(number)}</span>`;
+    else if (multiOp || singleOp) output += `<span class="font-semibold text-[#C81E1E]">${escapeHtml(multiOp ?? singleOp)}</span>`;
+    else if (punct) output += escapeHtml(punct);
+    else if (word) {
+      const upper = word.toUpperCase();
+      if (keywordSet.has(upper)) output += `<span class="font-semibold text-[#3B1770]">${escapeHtml(word)}</span>`;
+      else if (functionSet.has(upper)) output += `<span class="font-semibold text-[#0F6FA6]">${escapeHtml(word)}</span>`;
+      else output += escapeHtml(word);
+    }
+    lastIndex = SQL_TOKEN_PATTERN.lastIndex;
+  }
+  output += escapeHtml(text.slice(lastIndex));
+  return output;
+}
 
 const props = withDefaults(
   defineProps<{
@@ -57,25 +115,28 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   cancel: [];
-  'save-derived-field': [payload: { id?: string; name: string; label: string; expression: string }];
+  'save-derived-field': [payload: { id?: string; name: string; expression: string }];
   'save-custom-metric': [payload: { id?: string; name: string; expression: string }];
 }>();
 
 const name = ref('');
-const label = ref('');
 const expression = ref('');
 const paletteQuery = ref('');
 const preview = ref<OutputPreview>({ columns: [], rows: [], sourceLabel: '' });
 const expressionInput = ref<HTMLTextAreaElement | null>(null);
+const highlightLayer = ref<HTMLElement | null>(null);
 
 const title = computed(() => (props.mode === 'derived-field' ? 'Derived Field Editor' : 'Custom Metrics Editor'));
 const canSave = computed(() => name.value.trim() !== '' && expression.value.trim() !== '');
+const highlightedExpression = computed(() => `${highlightSql(expression.value)}\n`);
 
 function matches(text: string): boolean {
   const needle = paletteQuery.value.trim().toLowerCase();
   return !needle || text.toLowerCase().includes(needle);
 }
 
+const visibleRelationalOperators = computed(() => RELATIONAL_OPERATORS.filter((op) => matches(op.name)));
+const visibleLogicalOperators = computed(() => LOGICAL_OPERATORS.filter((op) => matches(op.name)));
 const visibleAggregateFunctions = computed(() =>
   props.mode === 'custom-metric' ? AGGREGATE_FUNCTIONS.filter((op) => matches(op.name)) : [],
 );
@@ -84,7 +145,6 @@ const visibleFields = computed(() => props.fieldOptions.filter((field) => matche
 
 function reset(): void {
   name.value = props.editing?.name ?? '';
-  label.value = props.editing?.label ?? props.editing?.name ?? '';
   expression.value = props.editing?.expression ?? '';
   paletteQuery.value = '';
   preview.value = { columns: [], rows: [], sourceLabel: '' };
@@ -105,6 +165,13 @@ function sqlIdentifier(part: string): string {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(part) ? part : `"${part.replace(/"/g, '""')}"`;
 }
 
+function syncHighlightScroll(): void {
+  if (highlightLayer.value && expressionInput.value) {
+    highlightLayer.value.scrollTop = expressionInput.value.scrollTop;
+    highlightLayer.value.scrollLeft = expressionInput.value.scrollLeft;
+  }
+}
+
 function insertAtCursor(token: string): void {
   const el = expressionInput.value;
   if (el && document.activeElement === el) {
@@ -114,6 +181,7 @@ function insertAtCursor(token: string): void {
     void nextTick(() => {
       el.focus();
       el.setSelectionRange(start + token.length, start + token.length);
+      syncHighlightScroll();
     });
   } else {
     expression.value = expression.value ? `${expression.value} ${token}` : token;
@@ -129,7 +197,7 @@ function insertOperation(operation: SqlOperation): void {
 }
 
 function run(): void {
-  const columnName = (props.mode === 'derived-field' ? label.value.trim() : name.value.trim()) || 'Result';
+  const columnName = name.value.trim() || 'Result';
   preview.value = previewFields(
     [{ value: columnName, name: columnName, type: 'Attribute', entity: '' }],
     columnName,
@@ -139,20 +207,9 @@ function run(): void {
 
 function save(): void {
   if (!canSave.value) return;
-  if (props.mode === 'derived-field') {
-    emit('save-derived-field', {
-      id: props.editing?.id,
-      name: name.value.trim(),
-      label: label.value.trim() || name.value.trim(),
-      expression: expression.value.trim(),
-    });
-    return;
-  }
-  emit('save-custom-metric', {
-    id: props.editing?.id,
-    name: name.value.trim(),
-    expression: expression.value.trim(),
-  });
+  const payload = { id: props.editing?.id, name: name.value.trim(), expression: expression.value.trim() };
+  if (props.mode === 'derived-field') emit('save-derived-field', payload);
+  else emit('save-custom-metric', payload);
 }
 </script>
 
@@ -198,26 +255,24 @@ function save(): void {
               />
             </label>
 
-            <label v-if="mode === 'derived-field'" class="block">
-              <span class="mb-1 block text-xs font-medium text-[#52525B]">Label</span>
-              <input
-                v-model="label"
-                type="text"
-                placeholder="Display label"
-                class="h-9 w-full rounded-md border border-[#D8D8D8] bg-white px-2.5 text-sm text-[#25262E] outline-none focus:border-[#3B1770]"
-              />
-            </label>
-
             <label class="block">
               <span class="mb-1 block text-xs font-medium text-[#52525B]">Expression (SQL)<span class="text-[#C62828]">*</span></span>
-              <textarea
-                ref="expressionInput"
-                v-model="expression"
-                rows="5"
-                spellcheck="false"
-                placeholder="e.g. UPPER(customer_name)"
-                class="w-full resize-y rounded-md border border-[#D8D8D8] bg-[#FAFAFA] px-2.5 py-2 font-mono text-xs leading-relaxed text-[#25262E] outline-none focus:border-[#3B1770]"
-              />
+              <div class="relative rounded-md border border-[#D8D8D8] bg-[#FAFAFA] focus-within:border-[#3B1770]">
+                <pre
+                  ref="highlightLayer"
+                  aria-hidden="true"
+                  class="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2.5 py-2 font-mono text-xs leading-relaxed text-[#25262E]"
+                ><code v-html="highlightedExpression" /></pre>
+                <textarea
+                  ref="expressionInput"
+                  v-model="expression"
+                  rows="5"
+                  spellcheck="false"
+                  placeholder="e.g. UPPER(customer_name)"
+                  class="relative w-full resize-none whitespace-pre-wrap break-words bg-transparent px-2.5 py-2 font-mono text-xs leading-relaxed text-transparent caret-[#25262E] outline-none placeholder:text-[#9A9A9A]"
+                  @scroll="syncHighlightScroll"
+                />
+              </div>
             </label>
 
             <div class="flex items-center justify-between">
@@ -275,6 +330,40 @@ function save(): void {
               />
             </label>
 
+            <div v-if="visibleRelationalOperators.length > 0">
+              <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">Relational</span>
+              <div class="space-y-0.5">
+                <button
+                  v-for="op in visibleRelationalOperators"
+                  :key="op.name"
+                  type="button"
+                  :title="op.signature"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
+                  @click="insertOperation(op)"
+                >
+                  <span class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[#EEF0F3] text-[10px] font-semibold text-[#52525B]">{{ op.symbol }}</span>
+                  <span class="truncate">{{ op.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="visibleLogicalOperators.length > 0">
+              <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">Logical</span>
+              <div class="space-y-0.5">
+                <button
+                  v-for="op in visibleLogicalOperators"
+                  :key="op.name"
+                  type="button"
+                  :title="op.signature"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
+                  @click="insertOperation(op)"
+                >
+                  <span class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[#EEF0F3] text-[10px] font-semibold text-[#52525B]">{{ op.symbol }}</span>
+                  <span class="truncate">{{ op.name }}</span>
+                </button>
+              </div>
+            </div>
+
             <div v-if="visibleAggregateFunctions.length > 0">
               <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#9A9A9A]">Function Library</span>
               <div class="space-y-0.5">
@@ -283,11 +372,11 @@ function save(): void {
                   :key="op.name"
                   type="button"
                   :title="op.signature"
-                  class="flex w-full items-center justify-between gap-1.5 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
                   @click="insertOperation(op)"
                 >
-                  <span class="truncate font-mono">{{ op.name }}</span>
                   <span class="flex-shrink-0 rounded-full bg-[#FBEFE0] px-1.5 py-0 text-[9px] font-semibold text-[#9A5B13]">fx</span>
+                  <span class="truncate font-mono">{{ op.name }}</span>
                 </button>
               </div>
             </div>
@@ -300,11 +389,11 @@ function save(): void {
                   :key="op.name"
                   type="button"
                   :title="op.signature"
-                  class="flex w-full items-center justify-between gap-1.5 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[#25262E] hover:bg-[#F5F1FC]"
                   @click="insertOperation(op)"
                 >
-                  <span class="truncate font-mono">{{ op.name }}</span>
                   <span class="flex-shrink-0 rounded-full bg-[#EEF0F3] px-1.5 py-0 text-[9px] font-semibold text-[#52525B]">fx</span>
+                  <span class="truncate font-mono">{{ op.name }}</span>
                 </button>
               </div>
             </div>
@@ -325,7 +414,10 @@ function save(): void {
               </div>
             </div>
 
-            <p v-if="visibleAggregateFunctions.length === 0 && visibleRowFunctions.length === 0 && visibleFields.length === 0" class="px-2 py-4 text-center text-[11px] text-[#7A7A7A]">
+            <p
+              v-if="visibleRelationalOperators.length === 0 && visibleLogicalOperators.length === 0 && visibleAggregateFunctions.length === 0 && visibleRowFunctions.length === 0 && visibleFields.length === 0"
+              class="px-2 py-4 text-center text-[11px] text-[#7A7A7A]"
+            >
               No matches.
             </p>
           </div>

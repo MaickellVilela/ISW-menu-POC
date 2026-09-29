@@ -32,8 +32,8 @@
           :node="selectedOutput"
           :all-nodes="canvasNodes"
           @close="closeInspector"
-          @add-derived-field="({ name, label, expression }) => canvasRef?.addDerivedField(name, label, expression)"
-          @update-derived-field="({ id, name, label, expression }) => canvasRef?.updateDerivedField(id, name, label, expression)"
+          @add-derived-field="({ name, expression }) => canvasRef?.addDerivedField(name, expression)"
+          @update-derived-field="({ id, name, expression }) => canvasRef?.updateDerivedField(id, name, expression)"
           @remove-derived-field="(id) => canvasRef?.removeDerivedField(id)"
           @add-hierarchy-field="({ label, parentField, childField, labelField }) => canvasRef?.addHierarchyField(label, parentField, childField, labelField)"
           @remove-hierarchy-field="(id) => canvasRef?.removeHierarchyField(id)"
@@ -105,8 +105,8 @@ const catalogFocusId = ref('');
 const canvasRef = ref<{
   clearTableSelection: () => void;
   replaceTable: (id: string, patch: TableRebindPatch) => void;
-  addDerivedField: (name: string, label: string, expression: string) => void;
-  updateDerivedField: (id: string, name: string, label: string, expression: string) => void;
+  addDerivedField: (name: string, expression: string) => void;
+  updateDerivedField: (id: string, name: string, expression: string) => void;
   removeDerivedField: (id: string) => void;
   addHierarchyField: (label: string, parentField: string, childField: string, labelField?: string) => void;
   removeHierarchyField: (id: string) => void;

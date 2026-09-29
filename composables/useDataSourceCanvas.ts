@@ -81,7 +81,6 @@ export interface CanvasNode {
 export interface DerivedFieldDef {
   id: string;
   name: string;
-  label: string;
   expression: string;
 }
 
@@ -656,7 +655,7 @@ export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): Output
     return {
       key,
       name: def.name,
-      label: labelOverrides[key] ?? def.label,
+      label: labelOverrides[key] ?? def.name,
       dataEntityLabel: '—',
       type: 'Attribute',
       origin: 'derived',
@@ -1177,20 +1176,20 @@ export function useDataSourceCanvas() {
     nodes.value = removeNodeAndDependents(nodes.value, id);
   }
 
-  function addDerivedField(name: string, label: string, expression: string): void {
+  function addDerivedField(name: string, expression: string): void {
     const output = nodes.value.find(isOutputNode);
     if (!output) return;
     output.derivedFields = [
       ...(output.derivedFields ?? []),
-      { id: createId('derived'), name, label, expression },
+      { id: createId('derived'), name, expression },
     ];
   }
 
-  function updateDerivedField(id: string, name: string, label: string, expression: string): void {
+  function updateDerivedField(id: string, name: string, expression: string): void {
     const output = nodes.value.find(isOutputNode);
     if (!output?.derivedFields) return;
     output.derivedFields = output.derivedFields.map((def) =>
-      def.id === id ? { ...def, name, label, expression } : def,
+      def.id === id ? { ...def, name, expression } : def,
     );
   }
 
