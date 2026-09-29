@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import {
   entityCatalogSelectionId,
   filterSourceItems,
-  schemaNameMatches,
   type DataSourceConnection,
 } from '~/composables/dataSourceCatalog';
 import { CONNECTOR_ICONS } from '~/composables/connectorIcons';
@@ -39,11 +38,9 @@ const emit = defineEmits<{
   'update:searchQuery': [query: string];
 }>();
 
+/** Matches by entity name only — search is scoped one hierarchy level at a time. */
 const visibleEntities = computed(() => {
   void props.catalogRevision;
-  if (props.schemaName && schemaNameMatches({ name: props.schemaName, entityKeys: [] }, props.searchQuery)) {
-    return props.entities;
-  }
   return filterSourceItems(props.entities, props.searchQuery);
 });
 

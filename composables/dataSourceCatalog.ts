@@ -234,12 +234,6 @@ export function schemaNameForEntity(
   return schemaForEntityKey(connection.id, entityKey);
 }
 
-export interface ConnectionSearchMatch {
-  connection: DataSourceConnection;
-  matchingEntities: SourceItem[];
-  matchingSchemas: ConnectionSchema[];
-}
-
 function normalizedQuery(query: string): string {
   return query.trim().toLowerCase();
 }
@@ -248,85 +242,11 @@ function connectionNameMatches(connection: DataSourceConnection, needle: string)
   return `${connection.name} ${connection.connector}`.toLowerCase().includes(needle);
 }
 
-/** Matches a table by key or label — not by description or field names. */
-export function entityNameMatches(item: SourceItem, query: string): boolean {
-  const needle = normalizedQuery(query);
-  if (!needle) return true;
-  return `${item.key} ${item.label}`.toLowerCase().includes(needle);
-}
-
-export function matchingEntitiesForConnection(
-  connection: DataSourceConnection,
-  query: string,
-): SourceItem[] {
-  const needle = normalizedQuery(query);
-  if (!needle) return [];
-  return entitiesForConnection(connection).filter((entity) => entityNameMatches(entity, query));
-}
-
+/** Matches a schema by its own name only — the backend can't search across levels in one query. */
 export function schemaNameMatches(schema: ConnectionSchema, query: string): boolean {
   const needle = normalizedQuery(query);
   if (!needle) return true;
   return schema.name.toLowerCase().includes(needle);
-}
-
-export function matchingSchemasForConnection(
-  connection: DataSourceConnection,
-  query: string,
-): ConnectionSchema[] {
-  const needle = normalizedQuery(query);
-  if (!needle) return [];
-  return schemasForConnection(connection).filter((schema) => {
-    if (schemaNameMatches(schema, query)) return true;
-    return entitiesForConnectionSchema(connection, schema.name).some((entity) =>
-      entityNameMatches(entity, query),
-    );
-  });
-}
-
-export function matchingEntitiesForSchema(
-  connection: DataSourceConnection,
-  schemaName: string,
-  query: string,
-): SourceItem[] {
-  const entities = entitiesForConnectionSchema(connection, schemaName);
-  const needle = normalizedQuery(query);
-  if (!needle) return [];
-  if (schemaNameMatches({ name: schemaName, entityKeys: [] }, query)) return entities;
-  return entities.filter((entity) => entityNameMatches(entity, query));
-}
-
-export function matchingEntityCaption(entities: SourceItem[], limit = 3): string {
-  if (entities.length === 0) return '';
-  const names = entities.slice(0, limit).map((entity) => entity.label);
-  const remaining = entities.length - names.length;
-  const listed = names.join(', ');
-  return remaining > 0 ? `${listed} +${remaining}` : listed;
-}
-
-/** One labeled group of matched names for a connection-level search caption, tagged by result type. */
-export interface CatalogCaptionGroup {
-  kind: 'schema' | 'entity';
-  text: string;
-}
-
-/**
- * Groups a connection's matches by result type instead of picking one — a search term can match a
- * schema name and an unrelated table name at once, and the caller needs to show both distinctly
- * rather than silently dropping one (previously `matchingCatalogCaption` favored entities only).
- */
-export function matchingCatalogCaptionGroups(match: ConnectionSearchMatch, limit = 3): CatalogCaptionGroup[] {
-  const groups: CatalogCaptionGroup[] = [];
-  if (match.matchingSchemas.length > 0) {
-    const names = match.matchingSchemas.slice(0, limit).map((schema) => schema.name);
-    const remaining = match.matchingSchemas.length - names.length;
-    const listed = names.join(', ');
-    groups.push({ kind: 'schema', text: remaining > 0 ? `${listed} +${remaining}` : listed });
-  }
-  if (match.matchingEntities.length > 0) {
-    groups.push({ kind: 'entity', text: matchingEntityCaption(match.matchingEntities, limit) });
-  }
-  return groups;
 }
 
 export function schemaHasUsedTable(
@@ -358,38 +278,14 @@ export function connectionHasUsedTable(
   return false;
 }
 
+/** Matches a connection by its own name only — search is scoped one hierarchy level at a time. */
 export function searchConnections(
   connections: DataSourceConnection[],
   query: string,
-): ConnectionSearchMatch[] {
-  const needle = normalizedQuery(query);
-  if (!needle) {
-    return connections.map((connection) => ({
-      connection,
-      matchingEntities: [],
-      matchingSchemas: [],
-    }));
-  }
-
-  return connections.flatMap((connection) => {
-    const matchingEntities = matchingEntitiesForConnection(connection, query);
-    const matchingSchemas = matchingSchemasForConnection(connection, query);
-    if (
-      !connectionNameMatches(connection, needle)
-      && matchingEntities.length === 0
-      && matchingSchemas.length === 0
-    ) {
-      return [];
-    }
-    return [{ connection, matchingEntities, matchingSchemas }];
-  });
-}
-
-export function filterConnections(
-  connections: DataSourceConnection[],
-  query: string,
 ): DataSourceConnection[] {
-  return searchConnections(connections, query).map((match) => match.connection);
+  const needle = normalizedQuery(query);
+  if (!needle) return connections;
+  return connections.filter((connection) => connectionNameMatches(connection, needle));
 }
 
 export function filterSourceItems(items: SourceItem[], query: string): SourceItem[] {

@@ -80,6 +80,7 @@ function applySelectedSourceId(sourceId: string): void {
   selectedSchema.value = schemaName
     ? schemasForConnection(connection).find((schema) => schema.name === schemaName) ?? null
     : null;
+  catalogSearchQuery.value = '';
 }
 
 watch(
@@ -115,20 +116,24 @@ function selectTab(tab: SourcePanelTab): void {
 function selectConnection(connection: DataSourceConnection): void {
   selectedConnection.value = connection;
   selectedSchema.value = null;
+  catalogSearchQuery.value = '';
   emit('connection-selected', connection);
 }
 
 function selectSchema(schema: ConnectionSchema): void {
   selectedSchema.value = schema;
+  catalogSearchQuery.value = '';
 }
 
 function returnToConnections(): void {
   selectedConnection.value = null;
   selectedSchema.value = null;
+  catalogSearchQuery.value = '';
 }
 
 function returnToSchemas(): void {
   selectedSchema.value = null;
+  catalogSearchQuery.value = '';
 }
 
 function selectEntity(sourceItem: SourceItem): void {

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import {
-  matchingEntitiesForSchema,
-  matchingEntityCaption,
   schemaHasUsedTable,
   schemaNameMatches,
   schemasForConnection,
@@ -33,19 +31,12 @@ const schemas = computed(() => {
   return schemasForConnection(props.connection);
 });
 
+/** Matches by schema name only — search is scoped one hierarchy level at a time. */
 const visibleSchemas = computed(() => {
   const query = props.searchQuery.trim();
   if (!query) return schemas.value;
-  return schemas.value.filter((schema) => {
-    if (schemaNameMatches(schema, query)) return true;
-    return matchingEntitiesForSchema(props.connection, schema.name, query).length > 0;
-  });
+  return schemas.value.filter((schema) => schemaNameMatches(schema, query));
 });
-
-function captionFor(schema: ConnectionSchema): string {
-  if (!props.searchQuery.trim() || schemaNameMatches(schema, props.searchQuery)) return '';
-  return matchingEntityCaption(matchingEntitiesForSchema(props.connection, schema.name, props.searchQuery));
-}
 
 function inUse(schema: ConnectionSchema): boolean {
   return schemaHasUsedTable(props.connection, schema, props.usedTableIdentities);
@@ -83,7 +74,7 @@ function inUse(schema: ConnectionSchema): boolean {
 
     <div class="flex-shrink-0 px-3 py-2.5">
       <label class="relative block">
-        <span class="sr-only">Search schemas or tables</span>
+        <span class="sr-only">Search schemas</span>
         <svg
           viewBox="0 0 24 24"
           class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8A8A8A]"
@@ -97,7 +88,7 @@ function inUse(schema: ConnectionSchema): boolean {
         <input
           :value="searchQuery"
           type="search"
-          placeholder="Search schemas or tables"
+          placeholder="Search schemas"
           @input="emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           class="h-8 w-full rounded-md border border-[#D8D8D8] bg-white pl-8 pr-2.5 text-xs text-[#25262E] placeholder:text-[#9A9A9A] outline-none focus:border-[#3B1770]"
         />
@@ -133,12 +124,6 @@ function inUse(schema: ConnectionSchema): boolean {
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm text-[#25262E]">
               <HighlightedText :text="schema.name" :query="searchQuery" />
-            </span>
-            <span
-              v-if="captionFor(schema)"
-              class="mt-0.5 block truncate text-[11px] text-[#7A7A7A]"
-            >
-              <HighlightedText :text="captionFor(schema)" :query="searchQuery" />
             </span>
           </span>
           <span class="text-[10px] tabular-nums text-[#9A9A9A]">{{ schema.entityKeys.length }}</span>

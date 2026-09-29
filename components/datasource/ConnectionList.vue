@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import {
   connectionHasUsedTable,
   connectionUsesSchemas,
-  matchingCatalogCaptionGroups,
   schemasForConnection,
   searchConnections,
   type DataSourceConnection,
@@ -35,11 +34,10 @@ function directChildCount(connection: DataSourceConnection): number {
 
 const visibleMatches = computed(() => {
   void props.catalogRevision;
-  return searchConnections(props.connections, props.searchQuery).map((match) => ({
-    ...match,
-    captionGroups: matchingCatalogCaptionGroups(match),
-    childCount: directChildCount(match.connection),
-    inUse: connectionHasUsedTable(match.connection, props.usedTableIdentities),
+  return searchConnections(props.connections, props.searchQuery).map((connection) => ({
+    connection,
+    childCount: directChildCount(connection),
+    inUse: connectionHasUsedTable(connection, props.usedTableIdentities),
   }));
 });
 </script>
@@ -48,7 +46,7 @@ const visibleMatches = computed(() => {
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex-shrink-0 px-3 pb-2 pt-3">
       <label class="relative block">
-        <span class="sr-only">Search connections or tables</span>
+        <span class="sr-only">Search connections</span>
         <svg
           viewBox="0 0 24 24"
           class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8A8A8A]"
@@ -62,7 +60,7 @@ const visibleMatches = computed(() => {
         <input
           :value="searchQuery"
           type="search"
-          placeholder="Search connections or tables"
+          placeholder="Search connections"
           @input="emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           class="h-8 w-full rounded-md border border-[#D8D8D8] bg-white pl-8 pr-2.5 text-xs text-[#25262E] placeholder:text-[#9A9A9A] outline-none focus:border-[#3B1770]"
         />
@@ -95,28 +93,6 @@ const visibleMatches = computed(() => {
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm text-[#25262E]">
               <HighlightedText :text="match.connection.name" :query="searchQuery" />
-            </span>
-            <span
-              v-if="match.captionGroups.length > 0"
-              class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5"
-            >
-              <span
-                v-for="group in match.captionGroups"
-                :key="group.kind"
-                class="inline-flex min-w-0 items-center gap-1 text-[11px] text-[#7A7A7A]"
-              >
-                <span
-                  class="flex-shrink-0 rounded-full px-1.5 py-0 text-[9px] font-semibold"
-                  :class="
-                    group.kind === 'schema'
-                      ? 'bg-[#F1ECFA] text-[#3B1770]'
-                      : 'bg-[#EEF0F3] text-[#52525B]'
-                  "
-                >
-                  {{ group.kind === 'schema' ? 'Schema' : 'Table' }}
-                </span>
-                <span class="truncate"><HighlightedText :text="group.text" :query="searchQuery" /></span>
-              </span>
             </span>
           </span>
           <span class="text-[10px] tabular-nums text-[#9A9A9A]">{{ match.childCount }}</span>
