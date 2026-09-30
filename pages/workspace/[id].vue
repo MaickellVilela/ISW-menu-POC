@@ -4,6 +4,7 @@ import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
 import PublishConfirmDialog from '~/components/workspace/PublishConfirmDialog.vue';
+import PublishHintMarker from '~/components/workspace/PublishHintMarker.vue';
 import { useLiveCatalog, useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
 import { selectedPublishableAssets, type PublishNameDraft } from '~/composables/usePublish';
 import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
@@ -81,6 +82,7 @@ const {
   removeAttachment,
   setSelectedIds,
   artifactCount,
+  unpublishedCount,
   publishDrafts,
 } = useWorkspaceAssets({
   seedDemoData: workspaceId.value !== 'new',
@@ -123,6 +125,12 @@ function toggleArtifacts(): void {
 function hideArtifacts(): void {
   isArtifactsOpen.value = false;
 }
+
+function showArtifacts(): void {
+  isArtifactsOpen.value = true;
+}
+
+const showPublishHint = computed(() => !isArtifactsOpen.value && unpublishedCount.value > 0);
 
 async function onHeaderImport(): Promise<void> {
   isArtifactsOpen.value = true;
@@ -272,6 +280,17 @@ function onClosePublish() {
         >
           Create Data Source
         </button>
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="translate-x-1 opacity-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-to-class="translate-x-1 opacity-0"
+        >
+          <div v-if="showPublishHint" class="-mr-1 flex items-center gap-3 pl-1">
+            <span class="h-5 w-px bg-[#E2E2E2]" aria-hidden="true" />
+            <PublishHintMarker @click="showArtifacts" />
+          </div>
+        </Transition>
         <button
           type="button"
           class="relative flex h-8 w-8 items-center justify-center rounded-md transition-colors"

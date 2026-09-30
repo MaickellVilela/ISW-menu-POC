@@ -346,7 +346,8 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   const assets: Ref<WorkspaceAsset[]> = ref(seedDemoData ? [...SEEDED_ASSETS] : []);
   const attachments: Ref<ContextAttachment[]> = ref(seedDemoData ? [...SEEDED_ATTACHMENTS] : []);
   const openAssetId = ref<string | null>(null);
-  const selectedIds = ref<string[]>([]);
+  /** Sources start selected so publishing is one click away. */
+  const selectedIds = ref<string[]>(assets.value.map((asset) => asset.id));
   const viewMode = ref<SourceViewMode | null>(null);
   const lastPreviewedAssetId = ref<string | null>(null);
 
@@ -365,6 +366,14 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     () => !isEditorOpen.value && lastPreviewedAsset.value !== null,
   );
   const artifactCount = computed(() => assets.value.length + attachments.value.length);
+  /** Generated sources whose latest saved state is not yet in Data Sources. */
+  const publishedIds = ref<string[]>([]);
+  const unpublishedCount = computed(
+    () =>
+      assets.value.filter(
+        (asset) => asset.origin === 'generated' && !publishedIds.value.includes(asset.id),
+      ).length,
+  );
   const canPublish = computed(() => hasSelectedSources(selectedIds.value, assets.value));
 
   /** Opens a source in preview so the agent stays available. Ignored while editing. */
@@ -404,6 +413,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   function saveEdits(): boolean {
     if (viewMode.value !== 'edit' || !openAssetId.value) return false;
     touchAsset(openAssetId.value);
+    markUnpublished(openAssetId.value);
     viewMode.value = 'preview';
     return true;
   }
@@ -413,6 +423,11 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     if (viewMode.value !== 'edit' || !openAssetId.value) return false;
     viewMode.value = 'preview';
     return true;
+  }
+
+  /** Saved edits after a publish need publishing again. */
+  function markUnpublished(id: string): void {
+    publishedIds.value = publishedIds.value.filter((publishedId) => publishedId !== id);
   }
 
   function touchAsset(id: string): void {
@@ -430,6 +445,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   function addFromSetup(setup: DataSourceSetup): WorkspaceAsset {
     const asset = assetFromSetup(nextAssetId(), setup);
     assets.value = [asset, ...assets.value];
+    selectByDefault(asset.id);
     openAssetId.value = asset.id;
     viewMode.value = 'preview';
     if (setup.useCase.fileName) {
@@ -444,6 +460,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     const name = buildManualSourceName(assets.value.map((asset) => asset.name));
     const asset = assetForManualCreate(nextAssetId(), name);
     assets.value = [asset, ...assets.value];
+    selectByDefault(asset.id);
     openAssetId.value = asset.id;
     viewMode.value = 'edit';
     return asset;
@@ -472,6 +489,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
 
     const asset = assetFromImportable(nextAssetId(), source);
     assets.value = [asset, ...assets.value];
+    selectByDefault(asset.id);
     openAssetId.value = asset.id;
     viewMode.value = 'preview';
     return asset;
@@ -498,6 +516,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     const idSet = new Set(ids);
     assets.value = assets.value.filter((asset) => !idSet.has(asset.id));
     selectedIds.value = selectedIds.value.filter((id) => !idSet.has(id));
+    publishedIds.value = publishedIds.value.filter((id) => !idSet.has(id));
     if (openAssetId.value && idSet.has(openAssetId.value)) {
       openAssetId.value = null;
       viewMode.value = null;
@@ -510,6 +529,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
 
   function removeAttachment(id: string): void {
     attachments.value = attachments.value.filter((attachment) => attachment.id !== id);
+  }
+
+  function selectByDefault(id: string): void {
+    if (!selectedIds.value.includes(id)) selectedIds.value = [...selectedIds.value, id];
   }
 
   function setSelectedIds(ids: string[]): void {
@@ -542,6 +565,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     if (created.length) {
       liveCatalog.value = [...created, ...liveCatalog.value];
     }
+    const newlyPublished = drafts
+      .map((draft) => draft.assetId)
+      .filter((id) => byId.has(id) && !publishedIds.value.includes(id));
+    publishedIds.value = [...publishedIds.value, ...newlyPublished];
     return created;
   }
 
@@ -552,6 +579,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     openAsset,
     selectedIds,
     artifactCount,
+    unpublishedCount,
     canPublish,
     isEditorOpen,
     isEditingSource,
