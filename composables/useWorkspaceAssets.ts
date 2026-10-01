@@ -2,6 +2,8 @@ import { computed, ref, type Ref } from 'vue';
 import type { DataSourceSetup } from '~/composables/useDataSourceFlow';
 import { connectorKeyForType, type ConnectorKey } from '~/composables/connectorIcons';
 import { importableFromWorkspaceAsset } from '~/composables/usePublish';
+import { cloneNodes, createOutputNode, type CanvasNode } from '~/composables/useDataSourceCanvas';
+import { canvasNodesForSeed, canvasNodesForSetup } from '~/composables/workspaceCanvasSeeds';
 
 /** Data sources today; visuals and dashboards land in the same list later. */
 export type AssetKind = 'data-source' | 'visual' | 'dashboard';
@@ -284,6 +286,18 @@ const liveCatalog = ref<ImportableSource[]>(
 
 let publishedCopySeq = 0;
 
+/** Canvas of each published copy, so importing it back brings its model along. */
+const publishedCanvases = new Map<string, CanvasNode[]>();
+
+/** A canvas with only the Output — what a new, unconnected source starts from. */
+function emptyCanvas(): CanvasNode[] {
+  return [createOutputNode(900, 220)];
+}
+
+function canvasOrEmpty(nodes: CanvasNode[]): CanvasNode[] {
+  return nodes.length ? nodes : emptyCanvas();
+}
+
 export function liveCatalogSources(): ImportableSource[] {
   return liveCatalog.value;
 }
@@ -350,9 +364,30 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   const selectedIds = ref<string[]>(assets.value.map((asset) => asset.id));
   const viewMode = ref<SourceViewMode | null>(null);
   const lastPreviewedAssetId = ref<string | null>(null);
+  /** Canvas nodes per source id; the open canvas writes back here as it changes. */
+  const canvases = ref<Record<string, CanvasNode[]>>(
+    Object.fromEntries(
+      assets.value.map((asset) => [asset.id, canvasOrEmpty(canvasNodesForSeed(asset.id))]),
+    ),
+  );
+  /** Canvas as it was when editing started; restored when changes are discarded. */
+  const editSnapshot = ref<string | null>(null);
+  /** Bumped to remount the canvas when its nodes are replaced from outside (discard). */
+  const canvasRevision = ref(0);
 
   const isEditorOpen = computed(() => openAssetId.value !== null);
   const isEditingSource = computed(() => viewMode.value === 'edit');
+  const openCanvasNodes = computed<CanvasNode[]>(() =>
+    openAssetId.value ? canvases.value[openAssetId.value] ?? emptyCanvas() : [],
+  );
+  /** Changes whenever the canvas must mount fresh: another source, or restored nodes. */
+  const canvasKey = computed(() => `${openAssetId.value ?? 'none'}:${canvasRevision.value}`);
+  const hasUnsavedChanges = computed(
+    () =>
+      isEditingSource.value &&
+      editSnapshot.value !== null &&
+      JSON.stringify(openCanvasNodes.value) !== editSnapshot.value,
+  );
   const sourceViewMode = computed<SourceViewMode>(() => viewMode.value ?? 'preview');
   const openAsset = computed(
     () => assets.value.find((asset) => asset.id === openAssetId.value) ?? null,
@@ -407,6 +442,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
 
   function startEdit(): void {
     if (!openAssetId.value) return;
+    editSnapshot.value = JSON.stringify(openCanvasNodes.value);
     viewMode.value = 'edit';
   }
 
@@ -414,6 +450,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     if (viewMode.value !== 'edit' || !openAssetId.value) return false;
     touchAsset(openAssetId.value);
     markUnpublished(openAssetId.value);
+    editSnapshot.value = null;
     viewMode.value = 'preview';
     return true;
   }
@@ -421,8 +458,19 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   /** Leaves edit mode without persisting. Unsaved canvas changes are dropped. */
   function endEditing(): boolean {
     if (viewMode.value !== 'edit' || !openAssetId.value) return false;
+    if (hasUnsavedChanges.value && editSnapshot.value !== null) {
+      canvases.value[openAssetId.value] = JSON.parse(editSnapshot.value) as CanvasNode[];
+      canvasRevision.value += 1;
+    }
+    editSnapshot.value = null;
     viewMode.value = 'preview';
     return true;
+  }
+
+  /** Mirrors the open canvas into the source's stored nodes. */
+  function setCanvasNodes(id: string, nodes: CanvasNode[]): void {
+    if (!assets.value.some((asset) => asset.id === id)) return;
+    canvases.value[id] = cloneNodes(nodes);
   }
 
   /** Saved edits after a publish need publishing again. */
@@ -444,6 +492,7 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
   /** Adds a source produced by the agent and opens it in preview. */
   function addFromSetup(setup: DataSourceSetup): WorkspaceAsset {
     const asset = assetFromSetup(nextAssetId(), setup);
+    canvases.value[asset.id] = canvasOrEmpty(canvasNodesForSetup(setup));
     assets.value = [asset, ...assets.value];
     selectByDefault(asset.id);
     openAssetId.value = asset.id;
@@ -459,9 +508,11 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     if (viewMode.value === 'edit') return null;
     const name = buildManualSourceName(assets.value.map((asset) => asset.name));
     const asset = assetForManualCreate(nextAssetId(), name);
+    canvases.value[asset.id] = emptyCanvas();
     assets.value = [asset, ...assets.value];
     selectByDefault(asset.id);
     openAssetId.value = asset.id;
+    editSnapshot.value = JSON.stringify(canvases.value[asset.id]);
     viewMode.value = 'edit';
     return asset;
   }
@@ -488,6 +539,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     }
 
     const asset = assetFromImportable(nextAssetId(), source);
+    const published = publishedCanvases.get(source.id);
+    canvases.value[asset.id] = published
+      ? cloneNodes(published)
+      : canvasOrEmpty(canvasNodesForSeed(source.id));
     assets.value = [asset, ...assets.value];
     selectByDefault(asset.id);
     openAssetId.value = asset.id;
@@ -517,9 +572,11 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     assets.value = assets.value.filter((asset) => !idSet.has(asset.id));
     selectedIds.value = selectedIds.value.filter((id) => !idSet.has(id));
     publishedIds.value = publishedIds.value.filter((id) => !idSet.has(id));
+    for (const id of ids) delete canvases.value[id];
     if (openAssetId.value && idSet.has(openAssetId.value)) {
       openAssetId.value = null;
       viewMode.value = null;
+      editSnapshot.value = null;
     }
     lastPreviewedAssetId.value = lastPreviewedIdAfterDelete(
       lastPreviewedAssetId.value,
@@ -557,9 +614,9 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
       const asset = byId.get(draft.assetId);
       if (!asset) continue;
       publishedCopySeq += 1;
-      created.push(
-        importableFromWorkspaceAsset(asset, draft.name, `pub-${publishedCopySeq}`),
-      );
+      const copyId = `pub-${publishedCopySeq}`;
+      publishedCanvases.set(copyId, cloneNodes(canvases.value[asset.id] ?? emptyCanvas()));
+      created.push(importableFromWorkspaceAsset(asset, draft.name, copyId));
     }
 
     if (created.length) {
@@ -583,6 +640,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     canPublish,
     isEditorOpen,
     isEditingSource,
+    openCanvasNodes,
+    canvasKey,
+    hasUnsavedChanges,
+    setCanvasNodes,
     lastPreviewedAsset,
     canRestoreLastPreview,
     sourceViewMode,

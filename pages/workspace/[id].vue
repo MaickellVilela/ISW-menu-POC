@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
-import LegacyBuilderPanel from '~/components/workspace/LegacyBuilderPanel.vue';
+import WorkspaceSourcePanel from '~/components/workspace/WorkspaceSourcePanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
 import PublishConfirmDialog from '~/components/workspace/PublishConfirmDialog.vue';
 import PublishHintMarker from '~/components/workspace/PublishHintMarker.vue';
 import { useLiveCatalog, useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
 import { selectedPublishableAssets, type PublishNameDraft } from '~/composables/usePublish';
 import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
+import type { CanvasNode } from '~/composables/useDataSourceCanvas';
 
 const route = useRoute();
 
@@ -67,6 +68,10 @@ const {
   isEditorOpen,
   isEditingSource,
   sourceViewMode,
+  openCanvasNodes,
+  canvasKey,
+  hasUnsavedChanges,
+  setCanvasNodes,
   openEditor,
   closeEditor,
   restoreLastPreview,
@@ -187,6 +192,10 @@ onBeforeUnmount(() => {
   stopPreviewUpdate();
   hidePublishToast();
 });
+
+function onCanvasNodes(nodes: CanvasNode[]) {
+  if (openAssetId.value) setCanvasNodes(openAssetId.value, nodes);
+}
 
 function onRenameAsset(payload: { id: string; name: string }) {
   renameAsset(payload.id, payload.name);
@@ -355,12 +364,17 @@ function onClosePublish() {
       </aside>
 
       <!-- Preview while chatting; full editor while editing (agent is hidden) -->
-      <section v-if="isEditorOpen" class="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-        <LegacyBuilderPanel
+      <!-- isolate: the canvas's own layers stay below the floating artifacts panel -->
+      <section v-if="isEditorOpen" class="isolate flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <WorkspaceSourcePanel
           :mode="sourceViewMode"
           :updating="isPreviewUpdating"
           :sources="assets"
           :selected-source-id="openAssetId"
+          :canvas-nodes="openCanvasNodes"
+          :canvas-key="canvasKey"
+          :has-unsaved-changes="hasUnsavedChanges"
+          @update:canvas-nodes="onCanvasNodes"
           @edit="startEdit"
           @save="saveEdits"
           @end="endEditing"

@@ -33,6 +33,7 @@ import { useSourceDefinition, type SourceDefinition } from '~/composables/source
 import { DEMO_PRESETS, type DemoPreset } from '~/composables/demoPresets';
 import type { CanvasFilterShortcut } from '~/composables/canvasFilterShortcuts';
 import {
+  emptyCanvasFilterMarks,
   filteredFieldIdsForTable,
   outputHasGlobalFilters,
   readCanvasFilterMarks,
@@ -44,6 +45,26 @@ const SURFACE_WIDTH = 3600;
 const SURFACE_HEIGHT = 2400;
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 1.6;
+
+const props = withDefaults(
+  defineProps<{
+    /** localStorage key for the layout; `null` keeps it in memory. Defaults to the standalone key. */
+    storageKey?: string | null;
+    /** Nodes to start from (read once, on mount). */
+    initialNodes?: CanvasNodeModel[];
+    /** Configure, filter badges/shortcuts and Source Definition — tied to the standalone settings. */
+    showSettings?: boolean;
+    showDemo?: boolean;
+    showSave?: boolean;
+  }>(),
+  {
+    storageKey: undefined,
+    initialNodes: undefined,
+    showSettings: true,
+    showDemo: true,
+    showSave: true,
+  },
+);
 
 const {
   nodes,
@@ -83,7 +104,7 @@ const {
   redo,
   canUndo,
   canRedo,
-} = useDataSourceCanvas();
+} = useDataSourceCanvas({ storageKey: props.storageKey, initialNodes: props.initialNodes });
 
 const emit = defineEmits<{
   'update:usedTableIdentities': [identities: string[]];
@@ -123,10 +144,16 @@ watch(nodes, (value) => {
 }, { immediate: true, deep: true });
 
 const route = useRoute();
-const filterMarks = ref<CanvasFilterMarkSnapshot>(readCanvasFilterMarks());
+
+/** Filter settings are not scoped per source yet, so hosts without settings show no marks. */
+function currentFilterMarks(): CanvasFilterMarkSnapshot {
+  return props.showSettings ? readCanvasFilterMarks() : emptyCanvasFilterMarks();
+}
+
+const filterMarks = ref<CanvasFilterMarkSnapshot>(currentFilterMarks());
 
 function refreshFilterMarks(): void {
-  filterMarks.value = readCanvasFilterMarks();
+  filterMarks.value = currentFilterMarks();
 }
 
 watch(
@@ -604,7 +631,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(async () => {
-  loadSourceDefinition();
+  if (props.showSettings) loadSourceDefinition();
   window.addEventListener('keydown', onKeydown);
   document.addEventListener('pointerdown', onDocumentPointerDown);
   await nextTick();
@@ -622,6 +649,7 @@ function clearTableSelection(): void {
 
 defineExpose({
   clearTableSelection,
+  saveSource,
   replaceTable,
   addDerivedField,
   updateDerivedField,
@@ -643,6 +671,7 @@ defineExpose({
     <div class="z-20 flex flex-shrink-0 items-center justify-between gap-3 border-b border-[#E2E2E2] bg-white px-4 py-2">
       <div class="flex items-center gap-2">
         <button
+          v-if="showSettings"
           type="button"
           class="rounded-md border border-[#E2E2E2] px-3 py-1 text-xs font-medium text-[#6B6B6B] hover:border-[#3B1770] hover:text-[#3B1770]"
           title="Configure this data source"
@@ -745,6 +774,7 @@ defineExpose({
             class="absolute right-0 top-full z-40 mt-1 w-48 overflow-hidden rounded-lg border border-[#E2E2E2] bg-white py-1 shadow-xl"
           >
             <button
+              v-if="showSettings"
               type="button"
               class="flex w-full px-3 py-2 text-left text-sm text-[#25262E] hover:bg-[#F5F1FC]"
               @click="openSourceDefinition"
@@ -777,16 +807,18 @@ defineExpose({
             </button>
           </div>
         </div>
-        <span class="mx-1 h-5 w-px flex-shrink-0 bg-[#E2E2E2]" aria-hidden="true" />
-        <button
-          type="button"
-          class="rounded-md bg-[#3B1770] px-3 py-1 text-xs font-medium text-white hover:bg-[#4B1E8C] disabled:bg-[#C9CED6]"
-          :disabled="!hasContent"
-          :title="saveStatus || 'Save this data source'"
-          @click="saveSource"
-        >
-          {{ saveStatus || 'Save' }}
-        </button>
+        <template v-if="showSave">
+          <span class="mx-1 h-5 w-px flex-shrink-0 bg-[#E2E2E2]" aria-hidden="true" />
+          <button
+            type="button"
+            class="rounded-md bg-[#3B1770] px-3 py-1 text-xs font-medium text-white hover:bg-[#4B1E8C] disabled:bg-[#C9CED6]"
+            :disabled="!hasContent"
+            :title="saveStatus || 'Save this data source'"
+            @click="saveSource"
+          >
+            {{ saveStatus || 'Save' }}
+          </button>
+        </template>
       </div>
     </div>
 
@@ -848,6 +880,7 @@ defineExpose({
           :has-performance-filter="hasPerformanceFilter(node)"
           :filtered-field-ids="filteredFieldIds(node)"
           :has-output-filter="outputHasGlobalFilters(filterMarks.globalFilters)"
+          :filter-shortcuts="showSettings"
           :selected="selectedNodeId === node.id"
           :save-error="joinSaveErrorIds.includes(node.id)"
           :shake-token="joinShakeNonce"
@@ -879,7 +912,7 @@ defineExpose({
     </div>
 
     <!-- Floating demo presets (pinned to the canvas, above the scroll viewport) -->
-    <div class="absolute bottom-4 right-4 z-30 flex flex-col items-end gap-2" data-demo-menu>
+    <div v-if="showDemo" class="absolute bottom-4 right-4 z-30 flex flex-col items-end gap-2" data-demo-menu>
       <div
         v-if="showDemoMenu"
         class="w-64 overflow-hidden rounded-lg border border-[#E2E2E2] bg-white shadow-xl"

@@ -38,11 +38,14 @@ const props = withDefaults(
     hasPerformanceFilter?: boolean;
     filteredFieldIds?: Record<string, string>;
     hasOutputFilter?: boolean;
+    /** Funnel buttons that jump to filter settings; off when the host has no settings. */
+    filterShortcuts?: boolean;
     selected?: boolean;
     saveError?: boolean;
     shakeToken?: number;
   }>(),
   {
+    filterShortcuts: true,
     leftLabel: '',
     rightLabel: '',
     leftFields: () => [],
@@ -284,6 +287,7 @@ function openOutputFilters(): void {
           </button>
         </div>
         <button
+          v-if="filterShortcuts"
           type="button"
           :class="funnelButtonClass(hasPerformanceFilter, 'card')"
           :title="hasPerformanceFilter ? 'Performance filters applied' : 'Performance filters'"
@@ -325,6 +329,7 @@ function openOutputFilters(): void {
           >{{ field.name }}</span>
           <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
             <button
+              v-if="filterShortcuts"
               type="button"
               :class="funnelButtonClass(isFieldFiltered(field), 'field')"
               :title="isFieldFiltered(field) ? `Global filter applied · ${field.name}` : `Global filters · ${field.name}`"
@@ -353,6 +358,7 @@ function openOutputFilters(): void {
           <span class="min-w-0 flex-1 truncate font-medium text-[#3B1770]">{{ field.name }}</span>
           <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
             <button
+              v-if="filterShortcuts"
               type="button"
               :class="funnelButtonClass(isFieldFiltered(field), 'field')"
               :title="isFieldFiltered(field) ? `Global filter applied · ${field.name}` : `Global filters · ${field.name}`"
@@ -559,6 +565,7 @@ function openOutputFilters(): void {
         </svg>
         <span class="flex-1 text-sm font-semibold">Output</span>
         <button
+          v-if="filterShortcuts"
           type="button"
           class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded"
           :class="

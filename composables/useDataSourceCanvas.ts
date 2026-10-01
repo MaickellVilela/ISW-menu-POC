@@ -990,8 +990,19 @@ export function parseCanvasNodes(raw: string | null): CanvasNode[] {
 /* Composable: reactive state + persistence wired around the pure helpers     */
 /* -------------------------------------------------------------------------- */
 
-export function useDataSourceCanvas() {
-  const nodes: Ref<CanvasNode[]> = ref([createOutputNode(900, 220)]);
+export interface UseDataSourceCanvasOptions {
+  /** localStorage key for the layout; `null` keeps the canvas in memory only. */
+  storageKey?: string | null;
+  /** Starting nodes (copied), used when storage is off or holds nothing. */
+  initialNodes?: CanvasNode[];
+}
+
+export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
+  const storageKey = options.storageKey === undefined ? CANVAS_LAYOUT_STORAGE_KEY : options.storageKey;
+  // Seeded synchronously so the first emitted snapshot is already the real canvas.
+  const nodes: Ref<CanvasNode[]> = ref(
+    options.initialNodes?.length ? cloneNodes(options.initialNodes) : [createOutputNode(900, 220)],
+  );
   const connections = computed(() => buildConnections(nodes.value));
 
   function findNode(id: string): CanvasNode | undefined {
@@ -1006,14 +1017,16 @@ export function useDataSourceCanvas() {
 
   function loadFromStorage(): void {
     if (typeof window === 'undefined') return;
-    const stored = parseCanvasNodes(window.localStorage.getItem(CANVAS_LAYOUT_STORAGE_KEY));
-    if (stored.length) nodes.value = stampMissingTableSourceIds(stored);
+    if (storageKey) {
+      const stored = parseCanvasNodes(window.localStorage.getItem(storageKey));
+      if (stored.length) nodes.value = stampMissingTableSourceIds(stored);
+    }
     ensureOutput();
   }
 
   function saveToStorage(): void {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(CANVAS_LAYOUT_STORAGE_KEY, JSON.stringify(nodes.value));
+    if (typeof window === 'undefined' || !storageKey) return;
+    window.localStorage.setItem(storageKey, JSON.stringify(nodes.value));
   }
 
   /* ----------------------------- undo / redo ----------------------------- */

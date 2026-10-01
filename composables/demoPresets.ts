@@ -5,6 +5,7 @@ import {
   type CanvasNode,
   type JoinCondition,
   type JoinType,
+  type SourceItem,
 } from './useDataSourceCanvas';
 import { entityByKey } from './dataSourceEntities';
 import { entityCatalogSelectionId } from './dataSourceCatalog';
@@ -20,14 +21,18 @@ const DEMO_CONNECTION_ID = 'managed';
 /* already stores in join conditions.                                         */
 /* -------------------------------------------------------------------------- */
 
-interface TableSpec {
+export interface TableSpec {
   /** Local alias, also the entity catalog key. */
   alias: string;
   x: number;
   y: number;
+  /** Catalog connection holding the entity; defaults to the managed demo connection. */
+  connectionId?: string;
+  /** Off-catalog table definition; used instead of the catalog lookup, with no catalog id. */
+  item?: SourceItem;
 }
 
-interface JoinSpec {
+export interface JoinSpec {
   /** Local alias used to reference this join as a downstream input. */
   alias: string;
   /** Alias of the left input (a table or another join). */
@@ -41,7 +46,7 @@ interface JoinSpec {
   y: number;
 }
 
-interface PresetSpec {
+export interface PresetSpec {
   tables: TableSpec[];
   joins: JoinSpec[];
   /** Alias of the node feeding the Output. */
@@ -62,13 +67,13 @@ export function buildPreset(spec: PresetSpec): CanvasNode[] {
   const idByAlias = new Map<string, string>();
 
   for (const table of spec.tables) {
-    const entity = entityByKey(table.alias);
+    const entity = table.item ?? entityByKey(table.alias);
     if (!entity) continue;
     const node = createTableNode(
       entity,
       table.x,
       table.y,
-      entityCatalogSelectionId(DEMO_CONNECTION_ID, table.alias),
+      table.item ? undefined : entityCatalogSelectionId(table.connectionId ?? DEMO_CONNECTION_ID, table.alias),
     );
     idByAlias.set(table.alias, node.id);
     nodes.push(node);
