@@ -397,8 +397,12 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     if (!id) return null;
     return assets.value.find((asset) => asset.id === id) ?? null;
   });
+  /** What the agent's Preview button opens: the last closed preview, else the first source. */
+  const previewTargetId = computed(
+    () => lastPreviewedAsset.value?.id ?? assets.value[0]?.id ?? null,
+  );
   const canRestoreLastPreview = computed(
-    () => !isEditorOpen.value && lastPreviewedAsset.value !== null,
+    () => !isEditorOpen.value && previewTargetId.value !== null,
   );
   const artifactCount = computed(() => assets.value.length + attachments.value.length);
   /** Generated sources whose latest saved state is not yet in Data Sources. */
@@ -428,13 +432,13 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     viewMode.value = null;
   }
 
-  /** Reopens the last closed preview. No-op while editing or if that source is gone. */
+  /** Reopens the last closed preview, falling back to the first source. No-op while editing. */
   function restoreLastPreview(): boolean {
-    const id = resolvedLastPreviewedId(lastPreviewedAssetId.value, assets.value);
-    if (!id) {
+    if (!resolvedLastPreviewedId(lastPreviewedAssetId.value, assets.value)) {
       lastPreviewedAssetId.value = null;
-      return false;
     }
+    const id = previewTargetId.value;
+    if (!id) return false;
     if (viewMode.value === 'edit') return false;
     openEditor(id);
     return true;

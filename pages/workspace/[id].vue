@@ -338,11 +338,12 @@ function onClosePublish() {
         <div class="flex h-12 flex-shrink-0 items-center justify-between gap-2 border-b border-[#E2E2E2] px-4">
           <span class="text-sm font-medium text-[#25262E]">Agent</span>
           <button
-            v-if="canRestoreLastPreview"
+            v-if="!isEditorOpen"
             type="button"
-            class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F1F1F1]"
-            title="Open the last previewed item"
-            aria-label="Open the last previewed item"
+            class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-[#25262E] transition-colors hover:bg-[#F1F1F1] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            :disabled="!canRestoreLastPreview"
+            :title="canRestoreLastPreview ? 'Open the preview' : 'No data sources to preview yet'"
+            aria-label="Open the preview"
             @click="restoreLastPreview"
           >
             <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden="true">
