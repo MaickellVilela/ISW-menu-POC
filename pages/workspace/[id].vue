@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import WorkspaceSourcePanel from '~/components/workspace/WorkspaceSourcePanel.vue';
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
@@ -94,6 +94,12 @@ const {
 });
 
 const { names: publishedNames } = useLiveCatalog();
+
+// Existing workspaces open on a source preview. Client-only: canvas node ids are
+// generated per run, so a server-rendered canvas would not hydrate cleanly.
+onMounted(() => {
+  if (workspaceId.value !== 'new') restoreLastPreview();
+});
 
 const artifactsPanelRef = ref<{ openImport: () => void } | null>(null);
 const isArtifactsOpen = ref(false);
