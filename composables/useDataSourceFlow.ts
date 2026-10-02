@@ -78,6 +78,7 @@ export interface FlowItem {
 
 const DATA_SOURCE_INTENT = /\bdata[\s_-]?sources?\b/i;
 const EDIT_INTENT = /\bedit\b/i;
+const UPDATE_INTENT = /\bupdat(e|es|ed|ing)\b/i;
 
 /** Simulated intent recognition: the agent offers the modal when a data source is mentioned. */
 export function detectsDataSourceIntent(text: string): boolean {
@@ -87,6 +88,19 @@ export function detectsDataSourceIntent(text: string): boolean {
 /** Prototype shortcut: any message with "edit" iterates on the open preview. */
 export function detectsEditIntent(text: string): boolean {
   return EDIT_INTENT.test(text);
+}
+
+/** Prototype shortcut: any message with "update" changes one card and highlights it. */
+export function detectsUpdateIntent(text: string): boolean {
+  return UPDATE_INTENT.test(text);
+}
+
+/** `cardLabel` names the changed card, or is null when there is nothing to update. */
+export function buildUpdateReply(cardLabel: string | null): string {
+  if (!cardLabel) {
+    return "There's nothing on a canvas to update yet. Create or import a data source, then ask me again.";
+  }
+  return `Done, I updated ${cardLabel}. It's highlighted on the canvas so you can see what changed.`;
 }
 
 /** How long the preview shimmer runs after an agent edit. */
@@ -258,11 +272,17 @@ export function useDataSourceFlow() {
     return true;
   }
 
-  function sendFreeText(rawText: string): void {
+  /** `context.updateTarget` names the card an "update" message would change. */
+  function sendFreeText(rawText: string, context: { updateTarget?: string | null } = {}): void {
     const text = rawText.trim();
     if (!text || isAgentRunning.value) return;
     suggestedQuestions.value = [];
     items.value.push(userText(text));
+
+    if (detectsUpdateIntent(text)) {
+      items.value.push(assistantText(buildUpdateReply(context.updateTarget ?? null)));
+      return;
+    }
 
     if (detectsEditIntent(text)) {
       items.value.push(assistantText(buildEditIterationReply()));

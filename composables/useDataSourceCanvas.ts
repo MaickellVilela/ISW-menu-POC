@@ -187,6 +187,15 @@ export const JOIN_COLLAPSED_RIGHT_DY = 27;
 /** MIME type used to carry a SourceItem across the native drag-and-drop boundary. */
 export const SOURCE_DRAG_MIME = 'application/x-datasource-item';
 
+/** How long a card shows the "updated" highlight. */
+export const CARD_HIGHLIGHT_MS = 2600;
+
+/** Asks the canvas to highlight a card; a new token replays it on the same card. */
+export interface CanvasHighlight {
+  nodeId: string;
+  token: number;
+}
+
 export interface SourceDragPayload {
   item: SourceItem;
   /** Catalog id of the dragged source, e.g. `entity:managed:orders`. */

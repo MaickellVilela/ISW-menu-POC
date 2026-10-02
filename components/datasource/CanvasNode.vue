@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   globalFilterShortcut,
   globalFiltersPageShortcut,
@@ -7,6 +7,7 @@ import {
   type CanvasFilterShortcut,
 } from '~/composables/canvasFilterShortcuts';
 import {
+  CARD_HIGHLIGHT_MS,
   PORT_DY,
   JOIN_RIGHT_PORT_DY,
   OUTPUT_PORT_DY,
@@ -43,9 +44,12 @@ const props = withDefaults(
     selected?: boolean;
     saveError?: boolean;
     shakeToken?: number;
+    /** Changing to a new positive value plays the "updated" highlight. */
+    highlightToken?: number;
   }>(),
   {
     filterShortcuts: true,
+    highlightToken: 0,
     leftLabel: '',
     rightLabel: '',
     leftFields: () => [],
@@ -97,6 +101,33 @@ function onShakeEnd(event: AnimationEvent): void {
   if (event.target !== event.currentTarget) return;
   shaking.value = false;
 }
+
+const highlighted = ref(false);
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearHighlightTimer(): void {
+  if (highlightTimer !== null) clearTimeout(highlightTimer);
+  highlightTimer = null;
+}
+
+watch(
+  () => props.highlightToken,
+  async (token, previous) => {
+    if (token <= 0 || token === previous) return;
+    clearHighlightTimer();
+    // Off for a tick so a repeat on the same card restarts the animation.
+    highlighted.value = false;
+    await nextTick();
+    highlighted.value = true;
+    highlightTimer = setTimeout(() => {
+      highlighted.value = false;
+      highlightTimer = null;
+    }, CARD_HIGHLIGHT_MS);
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(clearHighlightTimer);
 const joinTypes: JoinType[] = ['inner', 'left', 'full'];
 const typeMenuOpen = ref(false);
 
@@ -603,6 +634,25 @@ function openOutputFilters(): void {
       </div>
     </template>
 
+    <!-- "Updated" highlight: glow + tint over the card, and a chip naming the change -->
+    <template v-if="highlighted">
+      <span
+        class="card-updated-glow pointer-events-none absolute -inset-px rounded-lg"
+        :style="{ animationDuration: `${CARD_HIGHLIGHT_MS}ms` }"
+        aria-hidden="true"
+      />
+      <span
+        class="card-updated-chip pointer-events-none absolute -top-2.5 left-3 flex items-center gap-1 rounded-full bg-[#3B1770] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+        :style="{ animationDuration: `${CARD_HIGHLIGHT_MS}ms` }"
+        role="status"
+      >
+        <svg viewBox="0 0 24 24" class="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
+          <path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7L12 2Z" />
+        </svg>
+        Updated
+      </span>
+    </template>
+
     <!-- Resize width (right edge; ports still sit on top at their band) -->
     <span
       class="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize"
@@ -674,6 +724,71 @@ function openOutputFilters(): void {
   }
   80% {
     transform: translateX(5px) scale(1);
+  }
+}
+
+/* Two outward pulses with a brief tint, then the outline fades: one style for any card. */
+.card-updated-glow {
+  animation-name: card-updated-glow;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+@keyframes card-updated-glow {
+  0% {
+    background-color: rgba(139, 92, 246, 0.16);
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.9), 0 0 0 0 rgba(139, 92, 246, 0.55);
+  }
+  22% {
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.9), 0 0 0 12px rgba(139, 92, 246, 0);
+  }
+  23% {
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.9), 0 0 0 0 rgba(139, 92, 246, 0.45);
+  }
+  48% {
+    background-color: rgba(139, 92, 246, 0.06);
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.9), 0 0 0 12px rgba(139, 92, 246, 0);
+  }
+  75% {
+    background-color: rgba(139, 92, 246, 0);
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.7), 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+  100% {
+    background-color: rgba(139, 92, 246, 0);
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0), 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+.card-updated-chip {
+  animation-name: card-updated-chip;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+@keyframes card-updated-chip {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.9);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* No motion: hold a static outline and the chip for the same duration. */
+@media (prefers-reduced-motion: reduce) {
+  .card-updated-glow {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(59, 23, 112, 0.9);
+  }
+  .card-updated-chip {
+    animation: none;
   }
 }
 </style>

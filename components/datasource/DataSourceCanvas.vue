@@ -21,6 +21,7 @@ import {
   SOURCE_DRAG_MIME,
   NODE_WIDTH,
   PORT_DY,
+  type CanvasHighlight,
   type CanvasNode as CanvasNodeModel,
   type Point,
 } from '~/composables/useDataSourceCanvas';
@@ -56,10 +57,13 @@ const props = withDefaults(
     showSettings?: boolean;
     showDemo?: boolean;
     showSave?: boolean;
+    /** Card to highlight as just updated (read on mount and whenever its token changes). */
+    highlight?: CanvasHighlight | null;
   }>(),
   {
     storageKey: undefined,
     initialNodes: undefined,
+    highlight: null,
     showSettings: true,
     showDemo: true,
     showSave: true,
@@ -399,6 +403,38 @@ function scrollNodeIntoView(node: CanvasNodeModel): void {
   });
 }
 
+/* ------------------------------- highlight ------------------------------- */
+
+const highlightNodeId = ref<string | null>(null);
+const highlightToken = ref(0);
+
+/** True when the card is fully inside the visible part of the viewport. */
+function isNodeInView(node: CanvasNodeModel): boolean {
+  const vp = viewport.value;
+  if (!vp) return true;
+  const { width, height } = nodeSize(node);
+  const left = node.x * zoom.value;
+  const top = node.y * zoom.value;
+  return (
+    left >= vp.scrollLeft &&
+    top >= vp.scrollTop &&
+    left + width * zoom.value <= vp.scrollLeft + vp.clientWidth &&
+    top + height * zoom.value <= vp.scrollTop + vp.clientHeight
+  );
+}
+
+function applyHighlight(): void {
+  const node = props.highlight ? findNode(props.highlight.nodeId) : undefined;
+  if (!node) return;
+  if (!isNodeInView(node)) scrollNodeIntoView(node);
+  highlightNodeId.value = node.id;
+  highlightToken.value += 1;
+}
+
+watch(() => props.highlight?.token, (token) => {
+  if (token) applyHighlight();
+});
+
 /* ------------------------------ coordinates ------------------------------ */
 
 function toSurfaceCoords(event: { clientX: number; clientY: number }): Point {
@@ -635,7 +671,9 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
   document.addEventListener('pointerdown', onDocumentPointerDown);
   await nextTick();
-  fitToView();
+  await fitToView();
+  // A highlight requested together with opening this canvas plays once it is framed.
+  applyHighlight();
 });
 onBeforeUnmount(() => {
   detachWindowListeners();
@@ -884,6 +922,7 @@ defineExpose({
           :selected="selectedNodeId === node.id"
           :save-error="joinSaveErrorIds.includes(node.id)"
           :shake-token="joinShakeNonce"
+          :highlight-token="highlightNodeId === node.id ? highlightToken : 0"
           @start-move="onStartMove"
           @start-connect="onStartConnect"
           @start-resize="onStartResize"

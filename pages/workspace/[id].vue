@@ -8,7 +8,12 @@ import PublishHintMarker from '~/components/workspace/PublishHintMarker.vue';
 import { useLiveCatalog, useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
 import { selectedPublishableAssets, type PublishNameDraft } from '~/composables/usePublish';
 import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
-import type { CanvasNode } from '~/composables/useDataSourceCanvas';
+import {
+  CARD_HIGHLIGHT_MS,
+  type CanvasHighlight,
+  type CanvasNode,
+} from '~/composables/useDataSourceCanvas';
+import { pickUpdateTarget } from '~/composables/canvasUpdateFeedback';
 
 const route = useRoute();
 
@@ -72,6 +77,8 @@ const {
   canvasKey,
   hasUnsavedChanges,
   setCanvasNodes,
+  canvasNodesFor,
+  previewTargetId,
   openEditor,
   closeEditor,
   restoreLastPreview,
@@ -186,6 +193,48 @@ function onIteratePreview(): void {
   }, PREVIEW_ITERATION_MS);
 }
 
+/* Prototype: an "update" prompt changes one card and the canvas highlights it. */
+
+/** Bumped after each update so the next one picks a different card. */
+const updateTurn = ref(0);
+const canvasHighlight = ref<(CanvasHighlight & { sourceId: string }) | null>(null);
+let highlightClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The open source, or the one the Preview button would open. */
+const updateSourceId = computed(() => openAssetId.value ?? previewTargetId.value);
+
+const updateTarget = computed(() => {
+  const sourceId = updateSourceId.value;
+  if (!sourceId) return null;
+  return pickUpdateTarget(canvasNodesFor(sourceId), updateTurn.value);
+});
+
+/** Only the canvas of the source it targets gets the highlight. */
+const openCanvasHighlight = computed(() =>
+  canvasHighlight.value?.sourceId === openAssetId.value ? canvasHighlight.value : null,
+);
+
+function clearCanvasHighlight(): void {
+  if (highlightClearTimer !== null) clearTimeout(highlightClearTimer);
+  highlightClearTimer = null;
+  canvasHighlight.value = null;
+}
+
+function onAgentUpdate(): void {
+  const sourceId = updateSourceId.value;
+  const target = updateTarget.value;
+  if (!sourceId || !target) return;
+  if (!isEditorOpen.value) restoreLastPreview();
+  clearCanvasHighlight();
+  updateTurn.value += 1;
+  canvasHighlight.value = { sourceId, nodeId: target.nodeId, token: updateTurn.value };
+  // Dropped after it plays, so reopening this canvas later doesn't replay it.
+  highlightClearTimer = setTimeout(() => {
+    highlightClearTimer = null;
+    canvasHighlight.value = null;
+  }, CARD_HIGHLIGHT_MS + 1000);
+}
+
 watch(isEditingSource, (editing) => {
   if (editing) stopPreviewUpdate();
 });
@@ -197,6 +246,7 @@ watch(isEditorOpen, (open) => {
 onBeforeUnmount(() => {
   stopPreviewUpdate();
   hidePublishToast();
+  clearCanvasHighlight();
 });
 
 function onCanvasNodes(nodes: CanvasNode[]) {
@@ -366,6 +416,8 @@ function onClosePublish() {
             @created="onSourceCreated"
             @import="onImportSource"
             @iterate="onIteratePreview"
+            :update-target-label="updateTarget?.label ?? null"
+            @update="onAgentUpdate"
           />
         </div>
       </aside>
@@ -381,6 +433,7 @@ function onClosePublish() {
           :canvas-nodes="openCanvasNodes"
           :canvas-key="canvasKey"
           :has-unsaved-changes="hasUnsavedChanges"
+          :highlight="openCanvasHighlight"
           @update:canvas-nodes="onCanvasNodes"
           @edit="startEdit"
           @save="saveEdits"

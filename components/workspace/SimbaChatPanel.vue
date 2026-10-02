@@ -5,6 +5,7 @@ import {
   buildSetupHeadline,
   buildSetupSections,
   detectsEditIntent,
+  detectsUpdateIntent,
   shouldShowAgentEntry,
   useDataSourceFlow,
   type DataSourceSetup,
@@ -19,10 +20,13 @@ const props = withDefaults(
   defineProps<{
     hasSources?: boolean;
     importedSourceNames?: string[];
+    /** How the agent names the card an "update" message would change; null when none. */
+    updateTargetLabel?: string | null;
   }>(),
   {
     hasSources: false,
     importedSourceNames: () => [],
+    updateTargetLabel: null,
   },
 );
 
@@ -31,6 +35,8 @@ const emit = defineEmits<{
   created: [setup: DataSourceSetup];
   import: [sourceId: string];
   iterate: [];
+  /** An "update" message was answered; the host highlights the changed card. */
+  update: [];
 }>();
 
 const {
@@ -184,17 +190,25 @@ onBeforeUnmount(() => {
   clearCopyTimer();
 });
 
+/** Sends a prompt and tells the host about canvas-affecting intents ("update" wins over "edit"). */
+function sendToAgent(text: string): void {
+  sendFreeText(text, { updateTarget: props.updateTargetLabel });
+  if (detectsUpdateIntent(text)) {
+    if (props.updateTargetLabel) emit('update');
+  } else if (detectsEditIntent(text)) {
+    emit('iterate');
+  }
+}
+
 function ask(question: string) {
   if (ratingRequired.value || isAgentRunning.value) return;
-  sendFreeText(question);
+  sendToAgent(question);
   draft.value = '';
 }
 
 function onSend() {
   if (!canSend.value) return;
-  const text = draft.value;
-  sendFreeText(text);
-  if (detectsEditIntent(text)) emit('iterate');
+  sendToAgent(draft.value);
   draft.value = '';
 }
 
@@ -230,7 +244,7 @@ function reloadResponse(item: FlowItem): void {
   if (ratingRequired.value || isAgentRunning.value) return;
   const text = precedingUserText(items.value, item.id);
   if (!text) return;
-  sendFreeText(text);
+  sendToAgent(text);
 }
 
 function canReload(item: FlowItem): boolean {

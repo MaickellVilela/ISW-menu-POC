@@ -471,6 +471,10 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     return true;
   }
 
+  function canvasNodesFor(id: string): CanvasNode[] {
+    return canvases.value[id] ?? [];
+  }
+
   /** Mirrors the open canvas into the source's stored nodes. */
   function setCanvasNodes(id: string, nodes: CanvasNode[]): void {
     if (!assets.value.some((asset) => asset.id === id)) return;
@@ -648,6 +652,8 @@ export function useWorkspaceAssets(options: UseWorkspaceAssetsOptions = {}) {
     canvasKey,
     hasUnsavedChanges,
     setCanvasNodes,
+    canvasNodesFor,
+    previewTargetId,
     lastPreviewedAsset,
     canRestoreLastPreview,
     sourceViewMode,

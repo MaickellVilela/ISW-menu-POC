@@ -12,6 +12,7 @@
         :show-settings="showSettings"
         :show-demo="showDemo"
         :show-save="showSave"
+        :highlight="highlight"
         @update:used-table-identities="usedTableIdentities = $event"
         @update:selected-table="selectedTable = $event"
         @update:selected-output="selectedOutput = $event"
@@ -68,6 +69,7 @@ import EntityInspectorPanel from '~/components/datasource/EntityInspectorPanel.v
 import OutputInspectorPanel from '~/components/datasource/OutputInspectorPanel.vue';
 import SourcePanel from '~/components/datasource/SourcePanel.vue';
 import type {
+  CanvasHighlight,
   CanvasNode,
   FieldCapabilities,
   OutputTranslationFile,
@@ -86,10 +88,12 @@ withDefaults(
     showDemo?: boolean;
     showSave?: boolean;
     showSidePanel?: boolean;
+    highlight?: CanvasHighlight | null;
   }>(),
   {
     storageKey: undefined,
     initialNodes: undefined,
+    highlight: null,
     showSettings: true,
     showDemo: true,
     showSave: true,

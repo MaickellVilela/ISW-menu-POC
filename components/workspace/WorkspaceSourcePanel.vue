@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import DataSourceEditor from '~/components/datasource/DataSourceEditor.vue';
-import type { CanvasNode } from '~/composables/useDataSourceCanvas';
+import type { CanvasHighlight, CanvasNode } from '~/composables/useDataSourceCanvas';
 import { editorExitLabel, type SourceViewMode } from '~/composables/useWorkspaceAssets';
 
 interface PanelSource {
@@ -24,8 +24,11 @@ const props = withDefaults(
     /** Remounts the canvas when it changes (another source, or discarded edits). */
     canvasKey?: string;
     hasUnsavedChanges?: boolean;
+    /** Card the agent just "updated", highlighted on the canvas. */
+    highlight?: CanvasHighlight | null;
   }>(),
   {
+    highlight: null,
     mode: 'preview',
     updating: false,
     sources: () => [],
@@ -173,6 +176,7 @@ function onSelectSource(event: Event): void {
       :show-demo="false"
       :show-save="false"
       :show-side-panel="!isPreview"
+      :highlight="highlight"
       @update:canvas-nodes="emit('update:canvasNodes', $event)"
       @save="emit('save')"
     />
