@@ -280,8 +280,11 @@ function cancelPhrasing(): void {
                 <button type="button" class="rounded px-2 py-1 text-[12px] font-medium text-[#6B6B6B] hover:bg-[#F7F7F8]" @click="cancelEdit">Cancel</button>
               </div>
             </template>
-            <p v-else class="mt-1.5 rounded-lg border border-[#E2E2E2] bg-[#F8F8FA] px-4 py-3 text-sm leading-relaxed text-[#25262E]">
+            <p v-else-if="question.summary" class="mt-1.5 rounded-lg border border-[#E2E2E2] bg-[#F8F8FA] px-4 py-3 text-sm leading-relaxed text-[#25262E]">
               {{ question.summary }}
+            </p>
+            <p v-else class="mt-1.5 rounded-lg border border-dashed border-[#E2E2E2] px-4 py-3 text-sm text-[#9A9A9A]">
+              No summary yet.
             </p>
           </div>
 

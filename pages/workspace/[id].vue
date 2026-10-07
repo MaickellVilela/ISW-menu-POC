@@ -240,7 +240,6 @@ function onAgentUpdate(): void {
 
 /* Certified questions: the chat answers from the active source; configuration manages them. */
 
-const chatRef = ref<{ focusComposer: (hint?: string) => Promise<void> } | null>(null);
 const certifiedHighlightId = ref<string | null>(null);
 let certifiedHighlightTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -295,12 +294,6 @@ function onOpenCertified(questionId: string): void {
     certifiedHighlightTimer = null;
     certifiedHighlightId.value = null;
   }, CERTIFIED_HIGHLIGHT_MS);
-}
-
-/** "Add question" leaves configuration so the agent can take the question. */
-function onAddCertifiedQuestion(): void {
-  endConfigure();
-  chatRef.value?.focusComposer('Ask the question you want to certify…');
 }
 
 watch(isEditingSource, (editing) => {
@@ -480,7 +473,6 @@ function onClosePublish() {
 
         <div class="min-h-0 flex-1">
           <SimbaChatPanel
-            ref="chatRef"
             :has-sources="assets.length > 0"
             :imported-source-names="importedSourceNames"
             :active-source="activeSource"
@@ -507,7 +499,6 @@ function onClosePublish() {
           :has-unsaved-changes="hasUnsavedChanges"
           :highlight="openCanvasHighlight"
           :certified-highlight-id="certifiedHighlightId"
-          @add-question="onAddCertifiedQuestion"
           :configuring="isConfiguring"
           v-model:configure-section="configureSection"
           @configure="startConfigure"

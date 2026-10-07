@@ -7,24 +7,42 @@ interface PhrasingOption {
   custom: boolean;
 }
 
-/** Thumbs-up follow-up: turns an answered question into a certified one. */
-const props = defineProps<{
-  cardId: string;
-  question: string;
-  sourceName: string;
-  /** Agent-suggested phrasings; read once when the card opens. */
-  suggestions: string[];
-}>();
+/**
+ * Thumbs-up follow-up: certifies the answered question, or, when it's already
+ * certified, updates that question's phrasings and notes.
+ */
+const props = withDefaults(
+  defineProps<{
+    cardId: string;
+    question: string;
+    sourceName: string;
+    /** Agent-suggested phrasings; read once when the card opens. */
+    suggestions: string[];
+    /** Set when the question is already certified: its author, phrasings and notes. */
+    certifiedBy?: string | null;
+    initialPhrasings?: string[];
+    initialComment?: string;
+  }>(),
+  { certifiedBy: null, initialPhrasings: () => [], initialComment: '' },
+);
 
 const emit = defineEmits<{
   save: [payload: { phrasings: string[]; comment: string }];
   dismiss: [];
 }>();
 
-const options = ref<PhrasingOption[]>(props.suggestions.map((text) => ({ text, custom: false })));
-const selected = ref<string[]>([]);
+const isUpdate = computed(() => props.certifiedBy !== null);
+
+// Current phrasings come first, already checked; suggestions follow.
+const options = ref<PhrasingOption[]>([
+  ...props.initialPhrasings.map((text) => ({ text, custom: false })),
+  ...props.suggestions
+    .filter((text) => !props.initialPhrasings.includes(text))
+    .map((text) => ({ text, custom: false })),
+]);
+const selected = ref<string[]>([...props.initialPhrasings]);
 const customDraft = ref('');
-const comment = ref('');
+const comment = ref(props.initialComment);
 
 const atLimit = computed(() => selected.value.length >= MAX_PHRASINGS);
 const canAddCustom = computed(() => !atLimit.value && customDraft.value.trim().length > 0);
@@ -88,10 +106,13 @@ function onSave(): void {
       </svg>
       <div class="min-w-0">
         <h2 :id="`certify-title-${cardId}`" class="text-[15px] font-semibold text-[#3B1770]">
-          Certify this question
+          {{ isUpdate ? 'Question certified' : 'Certify this question' }}
         </h2>
         <p class="mt-1 text-sm font-medium text-[#25262E]">“{{ question }}”</p>
-        <p class="mt-1 text-xs leading-relaxed text-[#6B6B6B]">
+        <p v-if="isUpdate" class="mt-1 text-xs leading-relaxed text-[#6B6B6B]">
+          Certified by {{ certifiedBy }}. Update the phrasings and notes associated with it.
+        </p>
+        <p v-else class="mt-1 text-xs leading-relaxed text-[#6B6B6B]">
           Select phrasings to associate with it. Anyone asking any of them about {{ sourceName }} gets this query.
         </p>
       </div>
@@ -186,7 +207,7 @@ function onSave(): void {
           class="h-9 rounded-xl bg-[#3B1770] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#4B1E8C] active:scale-[0.98]"
           @click="onSave"
         >
-          Certify question
+          {{ isUpdate ? 'Save' : 'Certify question' }}
         </button>
       </div>
     </footer>

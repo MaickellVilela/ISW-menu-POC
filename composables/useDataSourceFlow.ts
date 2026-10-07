@@ -352,11 +352,10 @@ export function useDataSourceFlow() {
   function refineAnswer(itemId: string, request: RefineRequest, source: AnswerSource): void {
     const item = items.value.find((entry) => entry.id === itemId);
     if (!item?.answer || isAgentRunning.value) return;
-    const fresh = Boolean(item.certifiedId);
-    const base = fresh ? buildDataAnswer(item.answer.question, source) : item.answer;
+    const base = item.certifiedId ? buildDataAnswer(item.answer.question, source) : item.answer;
     suggestedQuestions.value = [];
     items.value.push(userText(buildRefineRequestText(request)));
-    items.value.push(answerItem(buildRefinedAnswer(base, request, { fresh })));
+    items.value.push(answerItem(buildRefinedAnswer(base, request)));
   }
 
   start();

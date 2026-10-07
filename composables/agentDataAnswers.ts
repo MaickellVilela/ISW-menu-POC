@@ -249,20 +249,13 @@ const REFINEMENTS: Record<RefineReason, Refinement> = {
   },
 };
 
-/** `fresh` skips a certified answer's saved query, so the reply says it ran a new one. */
-export function buildRefinedAnswer(
-  answer: DataAnswer,
-  request: RefineRequest,
-  options: { fresh?: boolean } = {},
-): DataAnswer {
+export function buildRefinedAnswer(answer: DataAnswer, request: RefineRequest): DataAnswer {
   const refinement = REFINEMENTS[request.reason];
   const note = request.note.trim();
   let sql = refinement.sql(answer.sql);
   if (note) sql = `-- Adjusted: ${note}\n${sql}`;
 
-  const parts: string[] = [];
-  if (options.fresh) parts.push('I skipped the certified answer and ran a fresh query.');
-  parts.push(refinement.lead);
+  const parts: string[] = [refinement.lead];
   if (note) parts.push(`I applied your note: "${note}".`);
   parts.push('Check the query to see what changed.');
 

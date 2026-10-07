@@ -3,10 +3,8 @@ import { computed, ref } from 'vue';
 import { REFINE_REASONS, type RefineReason, type RefineRequest } from '~/composables/agentDataAnswers';
 
 /** Thumbs-down follow-up: says what missed so the agent can re-run the answer. */
-const props = defineProps<{
+defineProps<{
   cardId: string;
-  /** A certified answer is regenerated from scratch instead of reusing its saved query. */
-  certified?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -18,12 +16,6 @@ const reason = ref<RefineReason | null>(null);
 const note = ref('');
 
 const canRefine = computed(() => reason.value !== null || note.value.trim().length > 0);
-
-const subtitle = computed(() =>
-  props.certified
-    ? "I'll skip the certified answer and run a fresh query."
-    : "Tell me what missed and I'll re-run the query.",
-);
 
 function pick(id: RefineReason): void {
   reason.value = reason.value === id ? null : id;
@@ -46,7 +38,7 @@ function onRefine(): void {
     />
 
     <h2 :id="`refine-title-${cardId}`" class="text-base font-semibold text-[#25262E]">What was off?</h2>
-    <p class="mt-0.5 text-sm text-[#6B6B6B]">{{ subtitle }}</p>
+    <p class="mt-0.5 text-sm text-[#6B6B6B]">Tell me what missed and I'll re-run the query.</p>
 
     <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="What was off">
       <button

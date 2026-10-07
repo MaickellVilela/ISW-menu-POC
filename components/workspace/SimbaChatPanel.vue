@@ -70,7 +70,7 @@ const {
   refineAnswer,
 } = useDataSourceFlow();
 
-const { questionsFor, findQuestion, certify } = useCertifiedQuestions();
+const { questionsFor, findQuestion, certify, updateQuestion } = useCertifiedQuestions();
 
 const activeQuestions = computed(() => questionsFor(props.activeSource?.id ?? null));
 
@@ -166,7 +166,6 @@ const skipRatingGate = ref(false);
 const followUps = ref<Record<string, FollowUp>>({});
 /** Answer item → the certified question saved from it. */
 const certifiedFrom = ref<Record<string, string>>({});
-const placeholderHint = ref<string | null>(null);
 
 const ratingRequired = computed(
   () =>
@@ -180,7 +179,7 @@ const canSend = computed(
 const composerPlaceholder = computed(() => {
   if (isAgentRunning.value) return 'Working on it…';
   if (ratingRequired.value) return 'Rate this response to continue';
-  return placeholderHint.value ?? 'Ask anything…';
+  return 'Ask anything…';
 });
 
 /** The certified question an answer reused or was saved as, if it still exists. */
@@ -205,9 +204,14 @@ function gateTitle(item: FlowItem): string {
 }
 
 function gateSubtitle(item: FlowItem): string {
-  if (!item.answer) return 'Choose one to continue.';
-  if (item.certifiedId) return "This question is certified. If the answer missed, I'll run a fresh query.";
+  if (!item.answer || item.certifiedId) return 'Choose one to continue.';
   return 'Helpful answers can be certified so everyone gets the same result.';
+}
+
+/** The certified question behind an answer (matched or saved from it); the 👍 card then updates it. */
+function existingQuestion(item: FlowItem): CertifiedQuestion | null {
+  const id = certifiedIdFor(item);
+  return id ? (findQuestion(id) ?? null) : null;
 }
 
 function openFollowUp(itemId: string, followUp: FollowUp): void {
@@ -258,7 +262,6 @@ onBeforeUnmount(() => {
 function sendToAgent(text: string): void {
   // Unanswered certify / refine cards close; the toolbar can reopen certify later.
   followUps.value = {};
-  placeholderHint.value = null;
   const source = props.activeSource;
   sendFreeText(text, {
     updateTarget: props.updateTargetLabel,
@@ -288,17 +291,11 @@ async function rateResponse(itemId: string, rating: ResponseRating): Promise<voi
   const wasGating = findLatestAssistantId(items.value) === itemId && !ratings.value[itemId];
   ratings.value = { ...ratings.value, [itemId]: rating };
 
+  // Data answers always follow up: 👍 certifies (or updates the certified question), 👎 refines.
   const item = items.value.find((entry) => entry.id === itemId);
   if (item?.answer) {
-    if (rating === 'down') {
-      openFollowUp(itemId, 'refine');
-      return;
-    }
-    if (!certifiedIdFor(item)) {
-      openFollowUp(itemId, 'certify');
-      return;
-    }
-    closeFollowUp(itemId);
+    openFollowUp(itemId, rating === 'up' ? 'certify' : 'refine');
+    return;
   }
 
   if (!wasGating) return;
@@ -315,6 +312,17 @@ function sourceForAnswer(answer: DataAnswer): AnswerSource {
 function onCertify(item: FlowItem, payload: { phrasings: string[]; comment: string }): void {
   const answer = item.answer;
   if (!answer) return;
+  closeFollowUp(item.id);
+
+  const existing = existingQuestion(item);
+  if (existing) {
+    const changed =
+      payload.comment !== existing.comment ||
+      payload.phrasings.join('\n') !== existing.phrasings.join('\n');
+    if (changed) updateQuestion(existing.id, { phrasings: payload.phrasings, comment: payload.comment });
+    return;
+  }
+
   const question = certify({
     sourceId: answer.sourceId,
     question: answer.question,
@@ -324,7 +332,6 @@ function onCertify(item: FlowItem, payload: { phrasings: string[]; comment: stri
     comment: payload.comment,
   });
   certifiedFrom.value = { ...certifiedFrom.value, [item.id]: question.id };
-  closeFollowUp(item.id);
 }
 
 function onRefine(item: FlowItem, request: RefineRequest): void {
@@ -350,13 +357,6 @@ function onCertifyAction(item: FlowItem): void {
   if (id) emit('openCertified', id);
   else if (followUps.value[item.id] === 'certify') closeFollowUp(item.id);
   else openFollowUp(item.id, 'certify');
-}
-
-/** "Add question" in the certified list: start the ask → 👍 → certify loop. */
-async function focusComposer(hint?: string): Promise<void> {
-  placeholderHint.value = hint ?? null;
-  await nextTick();
-  composer.value?.focus();
 }
 
 async function copyResponse(item: FlowItem): Promise<void> {
@@ -409,7 +409,7 @@ function setupSections(item: FlowItem) {
   return item.setup ? buildSetupSections(item.setup) : [];
 }
 
-defineExpose({ openWizard, focusComposer });
+defineExpose({ openWizard });
 </script>
 
 <template>
@@ -600,7 +600,12 @@ defineExpose({ openWizard, focusComposer });
                     :aria-pressed="ratings[item.id] === 'up'"
                     @click="rateResponse(item.id, 'up')"
                   >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <svg v-if="ratings[item.id] === 'up'" viewBox="0 0 24 24" class="h-[15px] w-[15px]" fill="currentColor" aria-hidden="true">
+                      <path
+                        d="M2 9h3v12H2a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1Zm5.293-1.293 6.4-6.4a.5.5 0 0 1 .654-.047l.853.64a1.5 1.5 0 0 1 .553 1.57L14.6 8H21a2 2 0 0 1 2 2v2.104a2 2 0 0 1-.15.762l-3.095 7.515a1 1 0 0 1-.925.619H8a1 1 0 0 1-1-1V8.414a1 1 0 0 1 .293-.707Z"
+                      />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                       <path
                         d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
                         stroke-linejoin="round"
@@ -617,7 +622,12 @@ defineExpose({ openWizard, focusComposer });
                     :aria-pressed="ratings[item.id] === 'down'"
                     @click="rateResponse(item.id, 'down')"
                   >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4 rotate-180" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <svg v-if="ratings[item.id] === 'down'" viewBox="0 0 24 24" class="h-[15px] w-[15px] rotate-180" fill="currentColor" aria-hidden="true">
+                      <path
+                        d="M2 9h3v12H2a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1Zm5.293-1.293 6.4-6.4a.5.5 0 0 1 .654-.047l.853.64a1.5 1.5 0 0 1 .553 1.57L14.6 8H21a2 2 0 0 1 2 2v2.104a2 2 0 0 1-.15.762l-3.095 7.515a1 1 0 0 1-.925.619H8a1 1 0 0 1-1-1V8.414a1 1 0 0 1 .293-.707Z"
+                      />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" class="h-4 w-4 rotate-180" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                       <path
                         d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
                         stroke-linejoin="round"
@@ -754,9 +764,17 @@ defineExpose({ openWizard, focusComposer });
             >
               <CertifyQuestionCard
                 :card-id="item.id"
-                :question="item.answer.question"
+                :question="existingQuestion(item)?.question ?? item.answer.question"
                 :source-name="item.answer.sourceName"
-                :suggestions="buildPhrasingSuggestions(item.answer.question)"
+                :suggestions="
+                  buildPhrasingSuggestions(
+                    existingQuestion(item)?.question ?? item.answer.question,
+                    existingQuestion(item)?.phrasings ?? [],
+                  )
+                "
+                :certified-by="existingQuestion(item)?.createdBy ?? null"
+                :initial-phrasings="existingQuestion(item)?.phrasings ?? []"
+                :initial-comment="existingQuestion(item)?.comment ?? ''"
                 @save="onCertify(item, $event)"
                 @dismiss="closeFollowUp(item.id)"
               />
@@ -767,7 +785,6 @@ defineExpose({ openWizard, focusComposer });
             >
               <RefineAnswerCard
                 :card-id="item.id"
-                :certified="Boolean(item.certifiedId)"
                 @refine="onRefine(item, $event)"
                 @dismiss="closeFollowUp(item.id)"
               />

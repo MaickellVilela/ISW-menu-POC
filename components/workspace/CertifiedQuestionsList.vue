@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
+import CertifiedQuestionForm from '~/components/workspace/CertifiedQuestionForm.vue';
 import CertifiedQuestionItem from '~/components/workspace/CertifiedQuestionItem.vue';
 import { useCertifiedQuestions } from '~/composables/useCertifiedQuestions';
 
@@ -8,21 +9,44 @@ const props = withDefaults(
   defineProps<{
     sourceId: string;
     sourceName: string;
+    /** Set by the host, e.g. when a matched question in the chat is clicked. */
     highlightId?: string | null;
-    /** False while editing the source: the agent is hidden until the edit ends. */
-    canAdd?: boolean;
   }>(),
-  { highlightId: null, canAdd: true },
+  { highlightId: null },
 );
 
-const emit = defineEmits<{
-  /** New questions are certified from the chat, so the host focuses the agent. */
-  addQuestion: [];
-}>();
+const CREATED_HIGHLIGHT_MS = 2400;
 
 const { questionsFor } = useCertifiedQuestions();
 
 const questions = computed(() => questionsFor(props.sourceId));
+
+const isCreating = ref(false);
+/** The question just added here, ringed like a host highlight. */
+const createdId = ref<string | null>(null);
+let createdTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearCreatedHighlight(): void {
+  if (createdTimer !== null) clearTimeout(createdTimer);
+  createdTimer = null;
+  createdId.value = null;
+}
+
+onBeforeUnmount(clearCreatedHighlight);
+
+function onCreated(questionId: string): void {
+  isCreating.value = false;
+  clearCreatedHighlight();
+  createdId.value = questionId;
+  createdTimer = setTimeout(() => {
+    createdTimer = null;
+    createdId.value = null;
+  }, CREATED_HIGHLIGHT_MS);
+}
+
+function isHighlighted(questionId: string): boolean {
+  return questionId === props.highlightId || questionId === createdId.value;
+}
 </script>
 
 <template>
@@ -37,13 +61,8 @@ const questions = computed(() => questionsFor(props.sourceId));
       <button
         type="button"
         class="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md bg-[#3B1770] px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#4B1E8C] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#3B1770]"
-        :disabled="!canAdd"
-        :title="
-          canAdd
-            ? 'Ask the agent a question, then give the answer a thumbs up to certify it'
-            : 'Finish editing the source to ask the agent'
-        "
-        @click="emit('addQuestion')"
+        :disabled="isCreating"
+        @click="isCreating = true"
       >
         <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M12 5v14M5 12h14" stroke-linecap="round" />
@@ -53,15 +72,22 @@ const questions = computed(() => questionsFor(props.sourceId));
     </div>
 
     <div class="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#FAFAFB] px-6 py-5">
+      <CertifiedQuestionForm
+        v-if="isCreating"
+        :source-id="sourceId"
+        @created="onCreated"
+        @cancel="isCreating = false"
+      />
+
       <CertifiedQuestionItem
         v-for="question in questions"
         :key="question.id"
         :question="question"
-        :highlighted="question.id === highlightId"
+        :highlighted="isHighlighted(question.id)"
       />
 
       <div
-        v-if="!questions.length"
+        v-if="!questions.length && !isCreating"
         class="mx-auto mt-10 flex max-w-sm flex-col items-center text-center"
       >
         <span class="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1ECFA] text-[#3B1770]" aria-hidden="true">
@@ -72,7 +98,7 @@ const questions = computed(() => questionsFor(props.sourceId));
         </span>
         <p class="mt-3 text-sm font-semibold text-[#25262E]">No certified questions yet</p>
         <p class="mt-1 text-sm text-[#6B6B6B]">
-          Ask the agent a question about this source, then give the answer a thumbs up to certify it.
+          Add one here, or give an agent answer about this source a thumbs up to certify it.
         </p>
       </div>
     </div>

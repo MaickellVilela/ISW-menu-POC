@@ -62,7 +62,6 @@ const emit = defineEmits<{
   configure: [];
   endConfigure: [];
   'update:configureSection': [section: ConfigurationSection];
-  addQuestion: [];
 }>();
 
 const { questionsFor } = useCertifiedQuestions();
@@ -236,8 +235,6 @@ function onSelectSource(event: Event): void {
           :source-id="selectedSource.id"
           :source-name="selectedSource.name"
           :highlight-id="certifiedHighlightId"
-          :can-add="isPreview"
-          @add-question="emit('addQuestion')"
         />
       </template>
     </DataSourceSettingsPanel>
