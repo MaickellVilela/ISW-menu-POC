@@ -12,9 +12,18 @@ import {
   type FlowItem,
 } from '~/composables/useDataSourceFlow';
 import { useLiveCatalog, formatAssetModifiedAt } from '~/composables/useWorkspaceAssets';
+import {
+  buildPhrasingSuggestions,
+  findCertifiedMatch,
+  useCertifiedQuestions,
+  type CertifiedQuestion,
+} from '~/composables/useCertifiedQuestions';
+import type { AnswerSource, DataAnswer, RefineRequest } from '~/composables/agentDataAnswers';
 import CreateDataSourceModal from '~/components/workspace/CreateDataSourceModal.vue';
 import HistoryDisclosure from '~/components/workspace/HistoryDisclosure.vue';
 import AgentThinkingPanel from '~/components/workspace/AgentThinkingPanel.vue';
+import CertifyQuestionCard from '~/components/workspace/CertifyQuestionCard.vue';
+import RefineAnswerCard from '~/components/workspace/RefineAnswerCard.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -22,11 +31,14 @@ const props = withDefaults(
     importedSourceNames?: string[];
     /** How the agent names the card an "update" message would change; null when none. */
     updateTargetLabel?: string | null;
+    /** Source data questions are answered from (open or last previewed); null when none. */
+    activeSource?: AnswerSource | null;
   }>(),
   {
     hasSources: false,
     importedSourceNames: () => [],
     updateTargetLabel: null,
+    activeSource: null,
   },
 );
 
@@ -37,6 +49,8 @@ const emit = defineEmits<{
   iterate: [];
   /** An "update" message was answered; the host highlights the changed card. */
   update: [];
+  /** Show a certified question in the preview's Certified questions tab. */
+  openCertified: [questionId: string];
 }>();
 
 const {
@@ -53,7 +67,12 @@ const {
   completeAgentRun,
   acknowledgeImport,
   sendFreeText,
+  refineAnswer,
 } = useDataSourceFlow();
+
+const { questionsFor, findQuestion, certify } = useCertifiedQuestions();
+
+const activeQuestions = computed(() => questionsFor(props.activeSource?.id ?? null));
 
 const alreadyImportedNames = computed(() => new Set(props.importedSourceNames));
 
@@ -129,6 +148,9 @@ function ratingCaption(rating: ResponseRating): string {
   return rating === 'up' ? 'Marked helpful' : 'Marked not helpful';
 }
 
+/** What a rating opens under a data answer: certify after 👍, refine after 👎. */
+type FollowUp = 'certify' | 'refine';
+
 function captionFor(itemId: string): string {
   const rating = ratings.value[itemId];
   return rating ? ratingCaption(rating) : '';
@@ -141,6 +163,10 @@ const ratings = ref<Record<string, ResponseRating>>({});
 const copiedId = ref<string | null>(null);
 const originalOpenId = ref<string | null>(null);
 const skipRatingGate = ref(false);
+const followUps = ref<Record<string, FollowUp>>({});
+/** Answer item → the certified question saved from it. */
+const certifiedFrom = ref<Record<string, string>>({});
+const placeholderHint = ref<string | null>(null);
 
 const ratingRequired = computed(
   () =>
@@ -154,8 +180,46 @@ const canSend = computed(
 const composerPlaceholder = computed(() => {
   if (isAgentRunning.value) return 'Working on it…';
   if (ratingRequired.value) return 'Rate this response to continue';
-  return 'Ask anything…';
+  return placeholderHint.value ?? 'Ask anything…';
 });
+
+/** The certified question an answer reused or was saved as, if it still exists. */
+function certifiedIdFor(item: FlowItem): string | null {
+  const id = item.certifiedId ?? certifiedFrom.value[item.id];
+  return id && findQuestion(id) ? id : null;
+}
+
+/** User messages that matched a certified question, keyed by item id. */
+const matchedQuestions = computed(() => {
+  const matches: Record<string, CertifiedQuestion> = {};
+  for (const item of items.value) {
+    if (item.kind !== 'user-text' || !item.certifiedId) continue;
+    const question = findQuestion(item.certifiedId);
+    if (question) matches[item.id] = question;
+  }
+  return matches;
+});
+
+function gateTitle(item: FlowItem): string {
+  return item.answer ? 'Was this answer right?' : 'Was this response helpful?';
+}
+
+function gateSubtitle(item: FlowItem): string {
+  if (!item.answer) return 'Choose one to continue.';
+  if (item.certifiedId) return "This question is certified. If the answer missed, I'll run a fresh query.";
+  return 'Helpful answers can be certified so everyone gets the same result.';
+}
+
+function openFollowUp(itemId: string, followUp: FollowUp): void {
+  followUps.value = { ...followUps.value, [itemId]: followUp };
+  scrollToBottom();
+}
+
+function closeFollowUp(itemId: string): void {
+  const { [itemId]: _closed, ...rest } = followUps.value;
+  followUps.value = rest;
+}
+
 
 async function scrollToBottom() {
   await nextTick();
@@ -192,7 +256,15 @@ onBeforeUnmount(() => {
 
 /** Sends a prompt and tells the host about canvas-affecting intents ("update" wins over "edit"). */
 function sendToAgent(text: string): void {
-  sendFreeText(text, { updateTarget: props.updateTargetLabel });
+  // Unanswered certify / refine cards close; the toolbar can reopen certify later.
+  followUps.value = {};
+  placeholderHint.value = null;
+  const source = props.activeSource;
+  sendFreeText(text, {
+    updateTarget: props.updateTargetLabel,
+    source,
+    certified: source ? findCertifiedMatch(activeQuestions.value, source.id, text) : null,
+  });
   if (detectsUpdateIntent(text)) {
     if (props.updateTargetLabel) emit('update');
   } else if (detectsEditIntent(text)) {
@@ -215,7 +287,74 @@ function onSend() {
 async function rateResponse(itemId: string, rating: ResponseRating): Promise<void> {
   const wasGating = findLatestAssistantId(items.value) === itemId && !ratings.value[itemId];
   ratings.value = { ...ratings.value, [itemId]: rating };
+
+  const item = items.value.find((entry) => entry.id === itemId);
+  if (item?.answer) {
+    if (rating === 'down') {
+      openFollowUp(itemId, 'refine');
+      return;
+    }
+    if (!certifiedIdFor(item)) {
+      openFollowUp(itemId, 'certify');
+      return;
+    }
+    closeFollowUp(itemId);
+  }
+
   if (!wasGating) return;
+  await nextTick();
+  composer.value?.focus();
+}
+
+/** The source an answer was asked against, with the live table list when it's still active. */
+function sourceForAnswer(answer: DataAnswer): AnswerSource {
+  if (props.activeSource?.id === answer.sourceId) return props.activeSource;
+  return { id: answer.sourceId, name: answer.sourceName, tables: [] };
+}
+
+function onCertify(item: FlowItem, payload: { phrasings: string[]; comment: string }): void {
+  const answer = item.answer;
+  if (!answer) return;
+  const question = certify({
+    sourceId: answer.sourceId,
+    question: answer.question,
+    phrasings: payload.phrasings,
+    summary: answer.summary,
+    sql: answer.sql,
+    comment: payload.comment,
+  });
+  certifiedFrom.value = { ...certifiedFrom.value, [item.id]: question.id };
+  closeFollowUp(item.id);
+}
+
+function onRefine(item: FlowItem, request: RefineRequest): void {
+  if (!item.answer) return;
+  closeFollowUp(item.id);
+  refineAnswer(item.id, request, sourceForAnswer(item.answer));
+}
+
+/** The certified question saved from this answer, if it still exists. */
+function savedQuestionId(item: FlowItem): string | null {
+  const id = certifiedFrom.value[item.id];
+  return id && findQuestion(id) ? id : null;
+}
+
+/** A 👍'd answer that isn't certified yet; answers to certified questions don't qualify. */
+function canCertify(item: FlowItem): boolean {
+  return Boolean(item.answer) && !item.certifiedId && !savedQuestionId(item) && ratings.value[item.id] === 'up';
+}
+
+/** The pill opens a saved question in configuration, or toggles the certify card. */
+function onCertifyAction(item: FlowItem): void {
+  const id = savedQuestionId(item);
+  if (id) emit('openCertified', id);
+  else if (followUps.value[item.id] === 'certify') closeFollowUp(item.id);
+  else openFollowUp(item.id, 'certify');
+}
+
+/** "Add question" in the certified list: start the ask → 👍 → certify loop. */
+async function focusComposer(hint?: string): Promise<void> {
+  placeholderHint.value = hint ?? null;
   await nextTick();
   composer.value?.focus();
 }
@@ -236,19 +375,30 @@ async function copyResponse(item: FlowItem): Promise<void> {
   }, 1500);
 }
 
+function originalLabel(item: FlowItem): string {
+  const open = originalOpenId.value === item.id;
+  if (item.answer) return open ? 'Hide query' : 'View query';
+  return open ? 'Hide original response' : 'View original response';
+}
+
 function toggleOriginal(itemId: string): void {
   originalOpenId.value = originalOpenId.value === itemId ? null : itemId;
 }
 
+/** Data answers re-ask their own question, so a refined answer doesn't resend the refine note. */
+function reloadText(item: FlowItem): string {
+  return item.answer?.question ?? precedingUserText(items.value, item.id);
+}
+
 function reloadResponse(item: FlowItem): void {
   if (ratingRequired.value || isAgentRunning.value) return;
-  const text = precedingUserText(items.value, item.id);
+  const text = reloadText(item);
   if (!text) return;
   sendToAgent(text);
 }
 
 function canReload(item: FlowItem): boolean {
-  return !ratingRequired.value && !isAgentRunning.value && precedingUserText(items.value, item.id).length > 0;
+  return !ratingRequired.value && !isAgentRunning.value && reloadText(item).length > 0;
 }
 
 function setupHeadline(item: FlowItem): string {
@@ -259,7 +409,7 @@ function setupSections(item: FlowItem) {
   return item.setup ? buildSetupSections(item.setup) : [];
 }
 
-defineExpose({ openWizard });
+defineExpose({ openWizard, focusComposer });
 </script>
 
 <template>
@@ -491,21 +641,49 @@ defineExpose({ openWizard });
                     type="button"
                     class="flex h-7 w-7 items-center justify-center rounded-md font-mono text-[13px] leading-none transition-colors hover:bg-[#F1F1F1]"
                     :class="originalOpenId === item.id ? 'bg-[#F1F1F1]' : ''"
-                    title="View original response"
-                    :aria-label="originalOpenId === item.id ? 'Hide original response' : 'View original response'"
+                    :title="item.answer ? 'View query' : 'View original response'"
+                    :aria-label="originalLabel(item)"
                     :aria-pressed="originalOpenId === item.id"
                     @click="toggleOriginal(item.id)"
                   >
                     { }
                   </button>
+                  <!-- Certified once saved from this answer; "Certify" reopens a dismissed card -->
+                  <template v-if="savedQuestionId(item) || canCertify(item)">
+                    <span class="mx-1.5 h-5 w-px bg-[#E2E2E2]" aria-hidden="true" />
+                    <button
+                      type="button"
+                      class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+                      :class="
+                        savedQuestionId(item)
+                          ? 'border-[#D4C4EF] bg-[#F5F1FC] text-[#3B1770] hover:border-[#3B1770]'
+                          : followUps[item.id] === 'certify'
+                            ? 'border-[#3B1770] bg-[#F5F1FC] text-[#3B1770]'
+                            : 'border-[#E2E2E2] text-[#3D4C66] hover:border-[#3B1770] hover:text-[#3B1770]'
+                      "
+                      :title="savedQuestionId(item) ? 'Question certified. View it in Configuration' : 'Certify this question'"
+                      :aria-pressed="savedQuestionId(item) ? undefined : followUps[item.id] === 'certify'"
+                      @click="onCertifyAction(item)"
+                    >
+                      <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" stroke-linejoin="round" />
+                        <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      {{ savedQuestionId(item) ? 'Certified' : 'Certify' }}
+                    </button>
+                  </template>
                 </div>
 
+                <div v-if="originalOpenId === item.id && item.answer" class="mt-1.5 space-y-1.5">
+                  <p class="text-xs leading-relaxed text-[#6B6B6B]">{{ item.answer.summary }}</p>
+                  <pre class="overflow-x-auto rounded-lg bg-[#F7F7F8] px-3 py-2 font-mono text-xs leading-relaxed text-[#25262E]">{{ item.answer.sql }}</pre>
+                </div>
                 <pre
-                  v-if="originalOpenId === item.id"
+                  v-else-if="originalOpenId === item.id"
                   class="mt-1.5 whitespace-pre-wrap rounded-lg bg-[#F7F7F8] px-3 py-2 font-mono text-xs leading-relaxed text-[#25262E]"
                 >{{ item.text }}</pre>
 
-                <p v-if="ratings[item.id]" class="mt-1.5 flex items-center gap-1 text-xs text-[#6B6B6B]">
+                <p v-if="ratings[item.id] && !savedQuestionId(item)" class="mt-1.5 flex items-center gap-1 text-xs text-[#6B6B6B]">
                   <svg viewBox="0 0 24 24" class="h-3 w-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
@@ -524,9 +702,9 @@ defineExpose({ openWizard });
               <span class="absolute -top-1.5 left-14 h-3 w-3 rotate-45 rounded-tl-[2px] bg-[#3B1770]" aria-hidden="true" />
 
               <h2 :id="`quality-prompt-title-${item.id}`" class="text-base font-semibold text-white">
-                Was this response helpful?
+                {{ gateTitle(item) }}
               </h2>
-              <p class="mt-0.5 text-sm text-[#D9C9F0]">Choose one to continue.</p>
+              <p class="mt-0.5 text-sm text-[#D9C9F0]">{{ gateSubtitle(item) }}</p>
               <div class="mt-4 grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -568,10 +746,61 @@ defineExpose({ openWizard });
                 Don't show this again
               </label>
             </section>
+
+            <!-- Rating follow-ups take the gate's place: 👍 certifies, 👎 refines -->
+            <div
+              v-else-if="item.answer && followUps[item.id] === 'certify' && !isAgentRunning"
+              class="rating-prompt-enter"
+            >
+              <CertifyQuestionCard
+                :card-id="item.id"
+                :question="item.answer.question"
+                :source-name="item.answer.sourceName"
+                :suggestions="buildPhrasingSuggestions(item.answer.question)"
+                @save="onCertify(item, $event)"
+                @dismiss="closeFollowUp(item.id)"
+              />
+            </div>
+            <div
+              v-else-if="item.answer && followUps[item.id] === 'refine' && !isAgentRunning"
+              class="rating-prompt-enter"
+            >
+              <RefineAnswerCard
+                :card-id="item.id"
+                :certified="Boolean(item.certifiedId)"
+                @refine="onRefine(item, $event)"
+                @dismiss="closeFollowUp(item.id)"
+              />
+            </div>
           </div>
 
           <!-- User message -->
-          <div v-else-if="item.kind === 'user-text'" class="flex justify-end">
+          <div v-else-if="item.kind === 'user-text'" class="flex items-center justify-end gap-1.5">
+            <!-- Marks a question that matched a certified one; opens it in the certified list -->
+            <span v-if="matchedQuestions[item.id]" class="group relative flex-shrink-0">
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-full text-[#3B1770] transition-colors hover:bg-[#F5F1FC]"
+                :aria-label="`Matches certified question: ${matchedQuestions[item.id].question}. View in Certified questions`"
+                @click="emit('openCertified', matchedQuestions[item.id].id)"
+              >
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" stroke-linejoin="round" />
+                  <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+              <span
+                role="tooltip"
+                class="pointer-events-none invisible absolute right-0 top-full z-30 mt-1 w-64 rounded-md border border-[#E2E2E2] bg-white px-3 py-2 text-[11px] leading-relaxed text-[#6B6B6B] shadow-md group-hover:visible group-focus-within:visible"
+              >
+                <span class="block font-semibold text-[#3B1770]">Matches a certified question</span>
+                <span class="mt-0.5 block text-[#25262E]">“{{ matchedQuestions[item.id].question }}”</span>
+                <span class="mt-1 block">
+                  Certified by {{ matchedQuestions[item.id].createdBy }}. Answered with its saved query.
+                </span>
+                <span class="mt-1 block font-medium text-[#3B1770]">Click to view it in Certified questions</span>
+              </span>
+            </span>
             <div class="max-w-[85%] rounded-2xl rounded-br-sm bg-[#3B1770] px-3.5 py-2 text-sm leading-relaxed text-white">
               {{ item.text }}
             </div>
@@ -609,6 +838,28 @@ defineExpose({ openWizard });
             />
           </HistoryDisclosure>
         </template>
+
+        <!-- Certified questions for the active source: a starting point for an empty thread -->
+        <div v-if="!items.length && activeSource && activeQuestions.length" class="pt-1">
+          <p class="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">
+            Certified questions · {{ activeSource.name }}
+          </p>
+          <div class="flex flex-col items-start gap-2">
+            <button
+              v-for="question in activeQuestions"
+              :key="question.id"
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-full border border-[#D4C4EF] bg-[#F8F6FC] px-3 py-1.5 text-left text-xs text-[#3B1770] transition-colors hover:border-[#3B1770] hover:bg-[#F5F1FC]"
+              @click="ask(question.question)"
+            >
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" stroke-linejoin="round" />
+                      <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              {{ question.question }}
+            </button>
+          </div>
+        </div>
 
         <!-- Suggested questions about the new data source -->
         <div v-if="suggestedQuestions.length && !ratingRequired" class="pt-1">

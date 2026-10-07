@@ -8,6 +8,9 @@ import PublishHintMarker from '~/components/workspace/PublishHintMarker.vue';
 import { useLiveCatalog, useWorkspaceAssets } from '~/composables/useWorkspaceAssets';
 import { selectedPublishableAssets, type PublishNameDraft } from '~/composables/usePublish';
 import { PREVIEW_ITERATION_MS, type DataSourceSetup } from '~/composables/useDataSourceFlow';
+import type { AnswerSource } from '~/composables/agentDataAnswers';
+import type { ConfigurationSection } from '~/composables/canvasFilterShortcuts';
+import { useCertifiedQuestions } from '~/composables/useCertifiedQuestions';
 import {
   CARD_HIGHLIGHT_MS,
   type CanvasHighlight,
@@ -235,6 +238,71 @@ function onAgentUpdate(): void {
   }, CARD_HIGHLIGHT_MS + 1000);
 }
 
+/* Certified questions: the chat answers from the active source; configuration manages them. */
+
+const chatRef = ref<{ focusComposer: (hint?: string) => Promise<void> } | null>(null);
+const certifiedHighlightId = ref<string | null>(null);
+let certifiedHighlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+const CERTIFIED_HIGHLIGHT_MS = 2400;
+
+const { findQuestion } = useCertifiedQuestions();
+
+const activeSource = computed<AnswerSource | null>(() => {
+  const sourceId = updateSourceId.value;
+  const asset = sourceId ? assets.value.find((item) => item.id === sourceId) : undefined;
+  if (!asset) return null;
+  const tables = canvasNodesFor(asset.id)
+    .filter((node) => node.type === 'table')
+    .map((node) => node.label);
+  return { id: asset.id, name: asset.name, tables };
+});
+
+function clearCertifiedHighlight(): void {
+  if (certifiedHighlightTimer !== null) clearTimeout(certifiedHighlightTimer);
+  certifiedHighlightTimer = null;
+  certifiedHighlightId.value = null;
+}
+
+/* Configuration takes the canvas's place and hides the agent, from preview or edit. */
+
+/** The source being configured; another source opening (or none) ends it. */
+const configuringSourceId = ref<string | null>(null);
+const isConfiguring = computed(
+  () => configuringSourceId.value !== null && configuringSourceId.value === openAssetId.value,
+);
+const configureSection = ref<ConfigurationSection>('time-bar');
+
+function startConfigure(): void {
+  configuringSourceId.value = openAssetId.value;
+}
+
+function endConfigure(): void {
+  configuringSourceId.value = null;
+}
+
+/** Opens the question's source in configuration, on Certified questions, and rings the question. */
+function onOpenCertified(questionId: string): void {
+  const question = findQuestion(questionId);
+  if (!question || isEditingSource.value) return;
+  if (!assets.value.some((asset) => asset.id === question.sourceId)) return;
+  if (openAssetId.value !== question.sourceId) openEditor(question.sourceId);
+  configureSection.value = 'certified-questions';
+  configuringSourceId.value = question.sourceId;
+  clearCertifiedHighlight();
+  certifiedHighlightId.value = questionId;
+  certifiedHighlightTimer = setTimeout(() => {
+    certifiedHighlightTimer = null;
+    certifiedHighlightId.value = null;
+  }, CERTIFIED_HIGHLIGHT_MS);
+}
+
+/** "Add question" leaves configuration so the agent can take the question. */
+function onAddCertifiedQuestion(): void {
+  endConfigure();
+  chatRef.value?.focusComposer('Ask the question you want to certify…');
+}
+
 watch(isEditingSource, (editing) => {
   if (editing) stopPreviewUpdate();
 });
@@ -247,6 +315,7 @@ onBeforeUnmount(() => {
   stopPreviewUpdate();
   hidePublishToast();
   clearCanvasHighlight();
+  clearCertifiedHighlight();
 });
 
 function onCanvasNodes(nodes: CanvasNode[]) {
@@ -387,7 +456,7 @@ function onClosePublish() {
     <div class="relative flex min-h-0 flex-1 overflow-hidden">
       <!-- Agent stays mounted so the thread is kept while editing -->
       <aside
-        v-show="!isEditingSource"
+        v-show="!isEditingSource && !isConfiguring"
         class="relative flex min-h-0 flex-col bg-white"
         :class="isEditorOpen ? 'w-[40%] flex-shrink-0 border-r border-[#E2E2E2]' : 'min-w-0 flex-1'"
       >
@@ -411,13 +480,16 @@ function onClosePublish() {
 
         <div class="min-h-0 flex-1">
           <SimbaChatPanel
+            ref="chatRef"
             :has-sources="assets.length > 0"
             :imported-source-names="importedSourceNames"
+            :active-source="activeSource"
             @created="onSourceCreated"
             @import="onImportSource"
             @iterate="onIteratePreview"
             :update-target-label="updateTarget?.label ?? null"
             @update="onAgentUpdate"
+            @open-certified="onOpenCertified"
           />
         </div>
       </aside>
@@ -434,6 +506,12 @@ function onClosePublish() {
           :canvas-key="canvasKey"
           :has-unsaved-changes="hasUnsavedChanges"
           :highlight="openCanvasHighlight"
+          :certified-highlight-id="certifiedHighlightId"
+          @add-question="onAddCertifiedQuestion"
+          :configuring="isConfiguring"
+          v-model:configure-section="configureSection"
+          @configure="startConfigure"
+          @end-configure="endConfigure"
           @update:canvas-nodes="onCanvasNodes"
           @edit="startEdit"
           @save="saveEdits"

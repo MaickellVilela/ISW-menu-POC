@@ -30,6 +30,7 @@ import {
   queryWithoutFilterIntent,
   shortcutFromConfigureQuery,
   type CanvasFilterShortcut,
+  type ConfigurationSection,
   type DataSourceSettingsSection,
 } from '~/composables/canvasFilterShortcuts';
 import DataSourceEditor from '~/components/datasource/DataSourceEditor.vue';
@@ -74,7 +75,9 @@ function onWorkspaceSection(next: 'canvas' | 'settings'): void {
   else setConfigureQuery('time-bar');
 }
 
-function onSettingsSection(next: DataSourceSettingsSection): void {
-  setConfigureQuery(next);
+/** The standalone page has no agent sections, so only data sections reach the query. */
+function onSettingsSection(next: ConfigurationSection): void {
+  const section = parseSettingsSection(next);
+  if (section) setConfigureQuery(section);
 }
 </script>

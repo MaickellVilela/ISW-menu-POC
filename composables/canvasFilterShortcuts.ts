@@ -64,6 +64,11 @@ export type DataSourceSettingsSection =
   | 'map-locale'
   | 'global-filters';
 
+/** Agent sections only the workspace adds to configuration. */
+export type AgentSettingsSection = 'certified-questions';
+
+export type ConfigurationSection = DataSourceSettingsSection | AgentSettingsSection;
+
 export const DATA_SOURCE_SETTINGS_SECTIONS: DataSourceSettingsSection[] = [
   'time-bar',
   'cache',

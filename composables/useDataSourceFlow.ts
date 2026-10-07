@@ -1,4 +1,13 @@
 import { ref, computed, type Ref } from 'vue';
+import {
+  buildDataAnswer,
+  buildRefinedAnswer,
+  buildRefineRequestText,
+  type AnswerSource,
+  type DataAnswer,
+  type RefineRequest,
+} from '~/composables/agentDataAnswers';
+import type { CertifiedQuestion } from '~/composables/useCertifiedQuestions';
 
 export interface UseCasePayload {
   description: string;
@@ -72,6 +81,20 @@ export interface FlowItem {
   text?: string;
   setup?: DataSourceSetup;
   run?: AgentRunState;
+  /** Set on assistant replies that answer a data question; these can be certified. */
+  answer?: DataAnswer;
+  /** On a data answer: the certified question it reused instead of generating a query.
+   *  On the user message: the certified question it matched. */
+  certifiedId?: string;
+}
+
+export interface SendContext {
+  /** Names the card an "update" message would change. */
+  updateTarget?: string | null;
+  /** The source data questions are answered from; null falls back to a canned reply. */
+  source?: AnswerSource | null;
+  /** A certified question matching the message, reused as-is. */
+  certified?: CertifiedQuestion | null;
 }
 
 // --- Pure helpers (side-effect free so they can be unit tested) ---
@@ -197,8 +220,8 @@ function assistantText(text: string): FlowItem {
   return { id: nextId(), kind: 'assistant-text', text };
 }
 
-function userText(text: string): FlowItem {
-  return { id: nextId(), kind: 'user-text', text };
+function userText(text: string, certifiedId?: string): FlowItem {
+  return { id: nextId(), kind: 'user-text', text, certifiedId };
 }
 
 function setupSummary(setup: DataSourceSetup): FlowItem {
@@ -207,6 +230,19 @@ function setupSummary(setup: DataSourceSetup): FlowItem {
 
 function agentRun(connectionName: string): FlowItem {
   return { id: nextId(), kind: 'agent-run', run: { connectionName, running: true } };
+}
+
+function answerItem(answer: DataAnswer, certifiedId?: string): FlowItem {
+  return { id: nextId(), kind: 'assistant-text', text: answer.text, answer, certifiedId };
+}
+
+/** Re-runs the certified query: fresh narrative, saved summary and SQL. */
+export function answerFromCertified(question: CertifiedQuestion, source: AnswerSource): DataAnswer {
+  return {
+    ...buildDataAnswer(question.question, source),
+    summary: question.summary,
+    sql: question.sql,
+  };
 }
 
 export function useDataSourceFlow() {
@@ -272,12 +308,15 @@ export function useDataSourceFlow() {
     return true;
   }
 
-  /** `context.updateTarget` names the card an "update" message would change. */
-  function sendFreeText(rawText: string, context: { updateTarget?: string | null } = {}): void {
+  function sendFreeText(rawText: string, context: SendContext = {}): void {
     const text = rawText.trim();
     if (!text || isAgentRunning.value) return;
     suggestedQuestions.value = [];
-    items.value.push(userText(text));
+    // Canvas and setup intents win, so only a plain data question reuses a certified answer.
+    const answersData =
+      !detectsUpdateIntent(text) && !detectsEditIntent(text) && !detectsDataSourceIntent(text);
+    const certified = answersData && context.source ? (context.certified ?? null) : null;
+    items.value.push(userText(text, certified?.id));
 
     if (detectsUpdateIntent(text)) {
       items.value.push(assistantText(buildUpdateReply(context.updateTarget ?? null)));
@@ -295,7 +334,29 @@ export function useDataSourceFlow() {
       return;
     }
 
+    if (context.source) {
+      const answer = certified
+        ? answerFromCertified(certified, context.source)
+        : buildDataAnswer(text, context.source);
+      items.value.push(answerItem(answer, certified?.id));
+      return;
+    }
+
     items.value.push(assistantText(buildFallbackReply(hasDataSource.value)));
+  }
+
+  /**
+   * Thumbs-down follow-up: posts the request, then a re-run answer.
+   * A certified answer is regenerated from scratch rather than reusing its saved query.
+   */
+  function refineAnswer(itemId: string, request: RefineRequest, source: AnswerSource): void {
+    const item = items.value.find((entry) => entry.id === itemId);
+    if (!item?.answer || isAgentRunning.value) return;
+    const fresh = Boolean(item.certifiedId);
+    const base = fresh ? buildDataAnswer(item.answer.question, source) : item.answer;
+    suggestedQuestions.value = [];
+    items.value.push(userText(buildRefineRequestText(request)));
+    items.value.push(answerItem(buildRefinedAnswer(base, request, { fresh })));
   }
 
   start();
@@ -318,5 +379,6 @@ export function useDataSourceFlow() {
     completeAgentRun,
     acknowledgeImport,
     sendFreeText,
+    refineAnswer,
   };
 }
