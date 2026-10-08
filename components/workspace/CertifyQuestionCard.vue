@@ -245,7 +245,7 @@ function onSave(): void {
         :for="`certify-note-${cardId}`"
         class="mt-4 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8B6FC6]"
       >
-        Supporting notes
+        Notes
       </label>
       <textarea
         :id="`certify-note-${cardId}`"

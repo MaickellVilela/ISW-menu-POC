@@ -14,8 +14,8 @@ type EditableField = 'question' | 'summary' | 'sql' | 'comment';
 
 const TABS: { id: ItemTab; label: string }[] = [
   { id: 'phrasing', label: 'Phrasing' },
-  { id: 'query', label: 'Query' },
-  { id: 'comments', label: 'Comments' },
+  { id: 'query', label: 'Code' },
+  { id: 'comments', label: 'Notes' },
 ];
 
 const props = defineProps<{
@@ -122,7 +122,7 @@ function cancelPhrasing(): void {
           @keydown.esc.prevent="cancelEdit"
         />
         <p class="mt-1.5 text-xs text-[#6B6B6B]">
-          Changing the question doesn't change its query. Check the Query tab still answers it.
+          Changing the question doesn't change its code. Check the Code tab still answers it.
         </p>
         <div class="mt-2 flex gap-2">
           <button type="button" class="rounded bg-[#3B1770] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#4B1E8C]" @click="saveEdit">Save</button>
@@ -247,7 +247,7 @@ function cancelPhrasing(): void {
           <p v-else class="mt-3 text-xs text-[#9A9A9A]">You've reached {{ MAX_PHRASINGS }} phrasings. Remove one to add another.</p>
         </section>
 
-        <!-- Query -->
+        <!-- Code -->
         <section v-else-if="activeTab === 'query'" class="space-y-4">
           <div>
             <div class="flex items-center justify-between">
@@ -290,13 +290,13 @@ function cancelPhrasing(): void {
 
           <div>
             <div class="flex items-center justify-between">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Query</p>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Code</p>
               <button
                 v-if="editing !== 'sql'"
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-md text-[#9A9A9A] transition-colors hover:bg-[#F1F1F1] hover:text-[#3B1770]"
-                title="Edit query"
-                aria-label="Edit query"
+                title="Edit code"
+                aria-label="Edit code"
                 @click="startEdit('sql')"
               >
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
@@ -311,7 +311,7 @@ function cancelPhrasing(): void {
                 data-edit="sql"
                 rows="10"
                 spellcheck="false"
-                aria-label="Query"
+                aria-label="Code"
                 class="mt-1.5 w-full resize-y rounded-lg border border-[#3B1770] bg-white px-4 py-3 font-mono text-[13px] leading-relaxed text-[#25262E] outline-none"
                 @keydown.esc.prevent="cancelEdit"
               ></textarea>
@@ -327,16 +327,16 @@ function cancelPhrasing(): void {
           </div>
         </section>
 
-        <!-- Comments -->
+        <!-- Notes -->
         <section v-else>
           <div class="flex items-center justify-between">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Comment</p>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Notes</p>
             <button
               v-if="editing !== 'comment'"
               type="button"
               class="flex h-7 w-7 items-center justify-center rounded-md text-[#9A9A9A] transition-colors hover:bg-[#F1F1F1] hover:text-[#3B1770]"
-              title="Edit comment"
-              aria-label="Edit comment"
+              title="Edit notes"
+              aria-label="Edit notes"
               @click="startEdit('comment')"
             >
               <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
@@ -350,8 +350,8 @@ function cancelPhrasing(): void {
               v-model="draft"
               data-edit="comment"
               rows="4"
-              aria-label="Comment"
-              placeholder="Caveats, definitions, or why this query is the right one…"
+              aria-label="Notes"
+              placeholder="Caveats, definitions, or why this code is the right one…"
               class="mt-1.5 w-full resize-y rounded-lg border border-[#3B1770] bg-white px-4 py-3 text-sm leading-relaxed text-[#25262E] outline-none placeholder:text-[#9A9A9A]"
               @keydown.esc.prevent="cancelEdit"
             ></textarea>
@@ -363,7 +363,7 @@ function cancelPhrasing(): void {
           <p v-else-if="question.comment" class="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-[#25262E]">
             {{ question.comment }}
           </p>
-          <p v-else class="mt-1.5 text-sm text-[#9A9A9A]">No comments yet.</p>
+          <p v-else class="mt-1.5 text-sm text-[#9A9A9A]">No notes yet.</p>
         </section>
       </div>
 

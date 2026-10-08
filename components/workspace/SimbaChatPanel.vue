@@ -363,7 +363,7 @@ async function copyResponse(item: FlowItem): Promise<void> {
 
 function originalLabel(item: FlowItem): string {
   const open = originalOpenId.value === item.id;
-  if (item.answer) return open ? 'Hide query' : 'View query';
+  if (item.answer) return open ? 'Hide code' : 'View code';
   return open ? 'Hide original response' : 'View original response';
 }
 

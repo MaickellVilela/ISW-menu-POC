@@ -10,8 +10,8 @@ type Step = 1 | 2 | 3;
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 1, label: 'Question & Phrasings' },
-  { id: 2, label: 'Query & Summary' },
-  { id: 3, label: 'Comments' },
+  { id: 2, label: 'Code & Summary' },
+  { id: 3, label: 'Notes' },
 ];
 
 const QUERY_PLACEHOLDER = 'SELECT ...\nFROM ...\nWHERE ...';
@@ -224,7 +224,7 @@ function submit(): void {
         </button>
       </template>
 
-      <!-- 2. Query & summary -->
+      <!-- 2. Code & summary -->
       <template v-else-if="step === 2">
         <label for="cq-new-summary" class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
           Summary
@@ -234,12 +234,12 @@ function submit(): void {
           v-model="summary"
           data-step-focus
           rows="3"
-          placeholder="Short description of what this query returns…"
+          placeholder="Short description of what this code returns…"
           class="mt-1.5 w-full resize-y rounded-lg border border-[#E2E2E2] bg-white px-3 py-2.5 text-sm text-[#25262E] outline-none placeholder:text-[#9A9A9A] focus:border-[#3B1770]"
         ></textarea>
 
         <label for="cq-new-query" class="mt-4 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
-          Query
+          Code
         </label>
         <textarea
           id="cq-new-query"
@@ -250,14 +250,14 @@ function submit(): void {
           class="mt-1.5 w-full resize-y rounded-lg border border-[#E2E2E2] bg-white px-3 py-2.5 font-mono text-[13px] leading-relaxed text-[#25262E] outline-none placeholder:text-[#9A9A9A] focus:border-[#3B1770]"
         ></textarea>
         <p class="mt-1 text-xs text-[#9A9A9A]">
-          The agent runs this query whenever someone asks the question or one of its phrasings.
+          The agent runs this code whenever someone asks the question or one of its phrasings.
         </p>
       </template>
 
-      <!-- 3. Comments -->
+      <!-- 3. Notes -->
       <template v-else>
         <label for="cq-new-notes" class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">
-          Certification notes
+          Notes
         </label>
         <textarea
           id="cq-new-notes"
@@ -290,7 +290,7 @@ function submit(): void {
           type="button"
           class="h-9 rounded-lg bg-[#3B1770] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#4B1E8C] disabled:cursor-not-allowed disabled:bg-[#E5E5EA] disabled:text-[#9A9A9A]"
           :disabled="!canAdvance"
-          :title="!canAdvance && step === 2 ? 'Add the query to continue' : undefined"
+          :title="!canAdvance && step === 2 ? 'Add the code to continue' : undefined"
           @click="next"
         >
           Next
