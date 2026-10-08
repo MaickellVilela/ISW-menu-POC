@@ -190,6 +190,13 @@ export function buildFallbackReply(hasDataSource: boolean): string {
     : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
 }
 
+/** Reply to 👎 feedback on a message that isn't a data answer, so there's no query to re-run. */
+export function buildFeedbackReply(sourceName: string | null): string {
+  return sourceName
+    ? `Thanks, noted. Ask me a question about ${sourceName} and I'll answer it from the data.`
+    : 'Thanks, noted. Create or import a data source and I can answer questions from it.';
+}
+
 export function buildEditIterationReply(): string {
   return "I'm applying that to the data source. Watch the preview — changes stay there and don't need a save.";
 }
@@ -347,14 +354,19 @@ export function useDataSourceFlow() {
 
   /**
    * Thumbs-down follow-up: posts the request, then a re-run answer.
-   * A certified answer is regenerated from scratch rather than reusing its saved query.
+   * A certified answer is regenerated from scratch rather than reusing its saved query;
+   * any other reply has no query, so the agent just acknowledges the feedback.
    */
-  function refineAnswer(itemId: string, request: RefineRequest, source: AnswerSource): void {
+  function refineAnswer(itemId: string, request: RefineRequest, source: AnswerSource | null): void {
     const item = items.value.find((entry) => entry.id === itemId);
-    if (!item?.answer || isAgentRunning.value) return;
-    const base = item.certifiedId ? buildDataAnswer(item.answer.question, source) : item.answer;
+    if (!item || isAgentRunning.value) return;
     suggestedQuestions.value = [];
     items.value.push(userText(buildRefineRequestText(request)));
+    if (!item.answer) {
+      items.value.push(assistantText(buildFeedbackReply(source?.name ?? null)));
+      return;
+    }
+    const base = item.certifiedId && source ? buildDataAnswer(item.answer.question, source) : item.answer;
     items.value.push(answerItem(buildRefinedAnswer(base, request)));
   }
 

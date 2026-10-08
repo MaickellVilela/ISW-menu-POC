@@ -13,12 +13,20 @@ import {
 } from '~/composables/useDataSourceFlow';
 import { useLiveCatalog, formatAssetModifiedAt } from '~/composables/useWorkspaceAssets';
 import {
+  MAX_PHRASINGS,
   buildPhrasingSuggestions,
   findCertifiedMatch,
+  normalizeQuestion,
   useCertifiedQuestions,
   type CertifiedQuestion,
+  type CertifyPayload,
 } from '~/composables/useCertifiedQuestions';
-import type { AnswerSource, DataAnswer, RefineRequest } from '~/composables/agentDataAnswers';
+import {
+  buildDataAnswer,
+  type AnswerSource,
+  type DataAnswer,
+  type RefineRequest,
+} from '~/composables/agentDataAnswers';
 import CreateDataSourceModal from '~/components/workspace/CreateDataSourceModal.vue';
 import HistoryDisclosure from '~/components/workspace/HistoryDisclosure.vue';
 import AgentThinkingPanel from '~/components/workspace/AgentThinkingPanel.vue';
@@ -214,9 +222,13 @@ function existingQuestion(item: FlowItem): CertifiedQuestion | null {
   return id ? (findQuestion(id) ?? null) : null;
 }
 
-function openFollowUp(itemId: string, followUp: FollowUp): void {
+/** Any answer can be rated, not just the latest, so bring the opened card itself into view. */
+async function openFollowUp(itemId: string, followUp: FollowUp): Promise<void> {
   followUps.value = { ...followUps.value, [itemId]: followUp };
-  scrollToBottom();
+  await nextTick();
+  scrollArea.value
+    ?.querySelector<HTMLElement>(`[data-follow-up="${itemId}"]`)
+    ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function closeFollowUp(itemId: string): void {
@@ -287,20 +299,13 @@ function onSend() {
   draft.value = '';
 }
 
-async function rateResponse(itemId: string, rating: ResponseRating): Promise<void> {
-  const wasGating = findLatestAssistantId(items.value) === itemId && !ratings.value[itemId];
+/**
+ * Every reply follows up: 👍 certifies (or updates the certified question), 👎 refines.
+ * Replies that aren't data answers let the author type the question, or just take feedback.
+ */
+function rateResponse(itemId: string, rating: ResponseRating): void {
   ratings.value = { ...ratings.value, [itemId]: rating };
-
-  // Data answers always follow up: 👍 certifies (or updates the certified question), 👎 refines.
-  const item = items.value.find((entry) => entry.id === itemId);
-  if (item?.answer) {
-    openFollowUp(itemId, rating === 'up' ? 'certify' : 'refine');
-    return;
-  }
-
-  if (!wasGating) return;
-  await nextTick();
-  composer.value?.focus();
+  openFollowUp(itemId, rating === 'up' ? 'certify' : 'refine');
 }
 
 /** The source an answer was asked against, with the live table list when it's still active. */
@@ -309,17 +314,49 @@ function sourceForAnswer(answer: DataAnswer): AnswerSource {
   return { id: answer.sourceId, name: answer.sourceName, tables: [] };
 }
 
-function onCertify(item: FlowItem, payload: { phrasings: string[]; comment: string }): void {
-  const answer = item.answer;
-  if (!answer) return;
-  closeFollowUp(item.id);
+/** A typed question gets its query from the active source, like any answer would. */
+function answerForTypedQuestion(text: string): DataAnswer | null {
+  const question = text.trim();
+  return props.activeSource && question ? buildDataAnswer(question, props.activeSource) : null;
+}
 
+/** Existing phrasings first, then new ones, without repeats or the question itself. */
+function mergePhrasings(question: string, current: string[], added: string[]): string[] {
+  const seen = new Set([normalizeQuestion(question)]);
+  const merged: string[] = [];
+  for (const phrase of [...current, ...added]) {
+    const key = normalizeQuestion(phrase);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(phrase);
+  }
+  return merged.slice(0, MAX_PHRASINGS);
+}
+
+function onCertify(item: FlowItem, payload: CertifyPayload): void {
   const existing = existingQuestion(item);
   if (existing) {
+    closeFollowUp(item.id);
     const changed =
       payload.comment !== existing.comment ||
       payload.phrasings.join('\n') !== existing.phrasings.join('\n');
     if (changed) updateQuestion(existing.id, { phrasings: payload.phrasings, comment: payload.comment });
+    return;
+  }
+
+  const answer = item.answer ?? answerForTypedQuestion(payload.question);
+  if (!answer) return;
+  closeFollowUp(item.id);
+
+  // A typed question may already be certified: add to it rather than certify it twice.
+  const key = normalizeQuestion(answer.question);
+  const duplicate = questionsFor(answer.sourceId).find((question) => normalizeQuestion(question.question) === key);
+  if (duplicate) {
+    updateQuestion(duplicate.id, {
+      phrasings: mergePhrasings(duplicate.question, duplicate.phrasings, payload.phrasings),
+      comment: payload.comment || duplicate.comment,
+    });
+    certifiedFrom.value = { ...certifiedFrom.value, [item.id]: duplicate.id };
     return;
   }
 
@@ -335,9 +372,8 @@ function onCertify(item: FlowItem, payload: { phrasings: string[]; comment: stri
 }
 
 function onRefine(item: FlowItem, request: RefineRequest): void {
-  if (!item.answer) return;
   closeFollowUp(item.id);
-  refineAnswer(item.id, request, sourceForAnswer(item.answer));
+  refineAnswer(item.id, request, item.answer ? sourceForAnswer(item.answer) : props.activeSource);
 }
 
 /** The certified question saved from this answer, if it still exists. */
@@ -348,7 +384,7 @@ function savedQuestionId(item: FlowItem): string | null {
 
 /** A 👍'd answer that isn't certified yet; answers to certified questions don't qualify. */
 function canCertify(item: FlowItem): boolean {
-  return Boolean(item.answer) && !item.certifiedId && !savedQuestionId(item) && ratings.value[item.id] === 'up';
+  return !item.certifiedId && !savedQuestionId(item) && ratings.value[item.id] === 'up';
 }
 
 /** The pill opens a saved question in configuration, or toggles the certify card. */
@@ -759,16 +795,18 @@ defineExpose({ openWizard });
 
             <!-- Rating follow-ups take the gate's place: 👍 certifies, 👎 refines -->
             <div
-              v-else-if="item.answer && followUps[item.id] === 'certify' && !isAgentRunning"
+              v-else-if="followUps[item.id] === 'certify' && !isAgentRunning"
+              :data-follow-up="item.id"
               class="rating-prompt-enter"
             >
               <CertifyQuestionCard
+                v-if="existingQuestion(item) || item.answer"
                 :card-id="item.id"
-                :question="existingQuestion(item)?.question ?? item.answer.question"
-                :source-name="item.answer.sourceName"
+                :question="existingQuestion(item)?.question ?? item.answer?.question ?? ''"
+                :source-name="item.answer?.sourceName ?? activeSource?.name ?? ''"
                 :suggestions="
                   buildPhrasingSuggestions(
-                    existingQuestion(item)?.question ?? item.answer.question,
+                    existingQuestion(item)?.question ?? item.answer?.question ?? '',
                     existingQuestion(item)?.phrasings ?? [],
                   )
                 "
@@ -778,13 +816,26 @@ defineExpose({ openWizard });
                 @save="onCertify(item, $event)"
                 @dismiss="closeFollowUp(item.id)"
               />
+              <!-- Not an answer: the author names the question and the agent writes its query -->
+              <CertifyQuestionCard
+                v-else
+                :card-id="item.id"
+                question=""
+                question-editable
+                :source-name="activeSource?.name ?? ''"
+                :blocked-reason="activeSource ? null : 'Create or import a data source to certify questions about it.'"
+                @save="onCertify(item, $event)"
+                @dismiss="closeFollowUp(item.id)"
+              />
             </div>
             <div
-              v-else-if="item.answer && followUps[item.id] === 'refine' && !isAgentRunning"
+              v-else-if="followUps[item.id] === 'refine' && !isAgentRunning"
+              :data-follow-up="item.id"
               class="rating-prompt-enter"
             >
               <RefineAnswerCard
                 :card-id="item.id"
+                :has-query="Boolean(item.answer)"
                 @refine="onRefine(item, $event)"
                 @dismiss="closeFollowUp(item.id)"
               />

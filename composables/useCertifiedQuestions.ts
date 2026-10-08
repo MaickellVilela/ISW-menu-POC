@@ -26,6 +26,13 @@ export type CertifyDraft = Pick<
   'sourceId' | 'question' | 'phrasings' | 'summary' | 'sql' | 'comment'
 >;
 
+/** What the chat's certify card saves; `question` is only used when the author typed it. */
+export interface CertifyPayload {
+  question: string;
+  phrasings: string[];
+  comment: string;
+}
+
 export type CertifiedQuestionPatch = Partial<
   Pick<CertifiedQuestion, 'question' | 'phrasings' | 'summary' | 'sql' | 'comment'>
 >;

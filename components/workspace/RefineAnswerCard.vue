@@ -3,9 +3,14 @@ import { computed, ref } from 'vue';
 import { REFINE_REASONS, type RefineReason, type RefineRequest } from '~/composables/agentDataAnswers';
 
 /** Thumbs-down follow-up: says what missed so the agent can re-run the answer. */
-defineProps<{
-  cardId: string;
-}>();
+withDefaults(
+  defineProps<{
+    cardId: string;
+    /** False on replies that aren't data answers: there's no query to re-run. */
+    hasQuery?: boolean;
+  }>(),
+  { hasQuery: true },
+);
 
 const emit = defineEmits<{
   refine: [request: RefineRequest];
@@ -38,7 +43,9 @@ function onRefine(): void {
     />
 
     <h2 :id="`refine-title-${cardId}`" class="text-base font-semibold text-[#25262E]">What was off?</h2>
-    <p class="mt-0.5 text-sm text-[#6B6B6B]">Tell me what missed and I'll re-run the query.</p>
+    <p class="mt-0.5 text-sm text-[#6B6B6B]">
+      {{ hasQuery ? "Tell me what missed and I'll re-run the query." : "Tell me what missed and I'll take it into account." }}
+    </p>
 
     <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="What was off">
       <button
