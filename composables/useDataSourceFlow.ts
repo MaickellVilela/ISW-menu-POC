@@ -190,7 +190,7 @@ export function buildFallbackReply(hasDataSource: boolean): string {
     : 'I can create a data source and then answer questions about it. Mention a data source whenever you are ready to start.';
 }
 
-/** Reply to 👎 feedback on a message that isn't a data answer, so there's no query to re-run. */
+/** Reply to refine feedback on a message that isn't a data answer, so there's no query to re-run. */
 export function buildFeedbackReply(sourceName: string | null): string {
   return sourceName
     ? `Thanks, noted. Ask me a question about ${sourceName} and I'll answer it from the data.`
@@ -353,7 +353,7 @@ export function useDataSourceFlow() {
   }
 
   /**
-   * Thumbs-down follow-up: posts the request, then a re-run answer.
+   * Refine: posts the request, then a re-run answer.
    * A certified answer is regenerated from scratch rather than reusing its saved query;
    * any other reply has no query, so the agent just acknowledges the feedback.
    */

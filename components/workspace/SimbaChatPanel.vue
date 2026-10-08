@@ -57,7 +57,7 @@ const emit = defineEmits<{
   iterate: [];
   /** An "update" message was answered; the host highlights the changed card. */
   update: [];
-  /** Show a certified question in the preview's Certified questions tab. */
+  /** Show a certified question in the source's Certified Questions tab. */
   openCertified: [questionId: string];
 }>();
 
@@ -123,72 +123,23 @@ function onRunCompleted(itemId: string) {
   }
 }
 
-type ResponseRating = 'up' | 'down';
-
-/** Latest assistant reply, ignoring setup cards and thinking runs. */
-function findLatestAssistantId(flowItems: FlowItem[]): string | null {
-  for (let index = flowItems.length - 1; index >= 0; index -= 1) {
-    if (flowItems[index]?.kind === 'assistant-text') return flowItems[index].id;
-  }
-  return null;
-}
-
-/** A finished assistant reply blocks the next prompt until it is rated. */
-function isResponseRatingRequired(
-  latestAssistantId: string | null,
-  responseRatings: Readonly<Record<string, ResponseRating>>,
-  agentRunning: boolean,
-): boolean {
-  if (agentRunning || !latestAssistantId) return false;
-  return responseRatings[latestAssistantId] === undefined;
-}
-
-function precedingUserText(flowItems: FlowItem[], itemId: string): string {
-  const index = flowItems.findIndex((item) => item.id === itemId);
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const item = flowItems[cursor];
-    if (item?.kind === 'user-text' && item.text?.trim()) return item.text;
-  }
-  return '';
-}
-
-function ratingCaption(rating: ResponseRating): string {
-  return rating === 'up' ? 'Marked helpful' : 'Marked not helpful';
-}
-
-/** What a rating opens under a data answer: certify after 👍, refine after 👎. */
-type FollowUp = 'certify' | 'refine';
-
-function captionFor(itemId: string): string {
-  const rating = ratings.value[itemId];
-  return rating ? ratingCaption(rating) : '';
-}
+/** The card an answer's Certify button opens under it. */
+type FollowUp = 'certify';
 
 const draft = ref('');
 const scrollArea = ref<HTMLElement | null>(null);
 const composer = ref<HTMLTextAreaElement | null>(null);
-const ratings = ref<Record<string, ResponseRating>>({});
 const copiedId = ref<string | null>(null);
 const originalOpenId = ref<string | null>(null);
-const skipRatingGate = ref(false);
 const followUps = ref<Record<string, FollowUp>>({});
 /** Answer item → the certified question saved from it. */
 const certifiedFrom = ref<Record<string, string>>({});
+/** The answer the docked refine panel is open for; one at a time. */
+const refineTargetId = ref<string | null>(null);
+const refineTarget = computed(() => items.value.find((item) => item.id === refineTargetId.value) ?? null);
 
-const ratingRequired = computed(
-  () =>
-    !skipRatingGate.value &&
-    isResponseRatingRequired(findLatestAssistantId(items.value), ratings.value, isAgentRunning.value),
-);
-
-const canSend = computed(
-  () => !isAgentRunning.value && !ratingRequired.value && draft.value.trim().length > 0,
-);
-const composerPlaceholder = computed(() => {
-  if (isAgentRunning.value) return 'Working on it…';
-  if (ratingRequired.value) return 'Rate this response to continue';
-  return 'Ask anything…';
-});
+const canSend = computed(() => !isAgentRunning.value && draft.value.trim().length > 0);
+const composerPlaceholder = computed(() => (isAgentRunning.value ? 'Working on it…' : 'Ask anything…'));
 
 /** The certified question an answer reused or was saved as, if it still exists. */
 function certifiedIdFor(item: FlowItem): string | null {
@@ -207,22 +158,13 @@ const matchedQuestions = computed(() => {
   return matches;
 });
 
-function gateTitle(item: FlowItem): string {
-  return item.answer ? 'Was this answer right?' : 'Was this response helpful?';
-}
-
-function gateSubtitle(item: FlowItem): string {
-  if (!item.answer || item.certifiedId) return 'Choose one to continue.';
-  return 'Helpful answers can be certified so everyone gets the same result.';
-}
-
-/** The certified question behind an answer (matched or saved from it); the 👍 card then updates it. */
+/** The certified question behind an answer (matched or saved from it). */
 function existingQuestion(item: FlowItem): CertifiedQuestion | null {
   const id = certifiedIdFor(item);
   return id ? (findQuestion(id) ?? null) : null;
 }
 
-/** Any answer can be rated, not just the latest, so bring the opened card itself into view. */
+/** Any answer can open its card, not just the latest, so bring the opened card itself into view. */
 async function openFollowUp(itemId: string, followUp: FollowUp): Promise<void> {
   followUps.value = { ...followUps.value, [itemId]: followUp };
   await nextTick();
@@ -255,7 +197,9 @@ function stopFollowing() {
 
 watch(isAgentRunning, (running) => {
   stopFollowing();
-  if (running) followTimer = window.setInterval(scrollToBottom, 400);
+  if (!running) return;
+  refineTargetId.value = null;
+  followTimer = window.setInterval(scrollToBottom, 400);
 });
 
 let copyTimer: number | null = null;
@@ -272,8 +216,9 @@ onBeforeUnmount(() => {
 
 /** Sends a prompt and tells the host about canvas-affecting intents ("update" wins over "edit"). */
 function sendToAgent(text: string): void {
-  // Unanswered certify / refine cards close; the toolbar can reopen certify later.
+  // Open certify cards and the refine panel close; the answer's buttons reopen them.
   followUps.value = {};
+  refineTargetId.value = null;
   const source = props.activeSource;
   sendFreeText(text, {
     updateTarget: props.updateTargetLabel,
@@ -288,7 +233,7 @@ function sendToAgent(text: string): void {
 }
 
 function ask(question: string) {
-  if (ratingRequired.value || isAgentRunning.value) return;
+  if (isAgentRunning.value) return;
   sendToAgent(question);
   draft.value = '';
 }
@@ -297,15 +242,6 @@ function onSend() {
   if (!canSend.value) return;
   sendToAgent(draft.value);
   draft.value = '';
-}
-
-/**
- * Every reply follows up: 👍 certifies (or updates the certified question), 👎 refines.
- * Replies that aren't data answers let the author type the question, or just take feedback.
- */
-function rateResponse(itemId: string, rating: ResponseRating): void {
-  ratings.value = { ...ratings.value, [itemId]: rating };
-  openFollowUp(itemId, rating === 'up' ? 'certify' : 'refine');
 }
 
 /** The source an answer was asked against, with the live table list when it's still active. */
@@ -372,27 +308,41 @@ function onCertify(item: FlowItem, payload: CertifyPayload): void {
 }
 
 function onRefine(item: FlowItem, request: RefineRequest): void {
+  refineTargetId.value = null;
   closeFollowUp(item.id);
   refineAnswer(item.id, request, item.answer ? sourceForAnswer(item.answer) : props.activeSource);
 }
 
-/** The certified question saved from this answer, if it still exists. */
-function savedQuestionId(item: FlowItem): string | null {
-  const id = certifiedFrom.value[item.id];
-  return id && findQuestion(id) ? id : null;
+function onDockRefine(request: RefineRequest): void {
+  const item = refineTarget.value;
+  if (item) onRefine(item, request);
 }
 
-/** A 👍'd answer that isn't certified yet; answers to certified questions don't qualify. */
-function canCertify(item: FlowItem): boolean {
-  return !item.certifiedId && !savedQuestionId(item) && ratings.value[item.id] === 'up';
+/** Refine docks its panel above the composer; certify and refine don't stay open on the same answer. */
+async function toggleRefine(item: FlowItem): Promise<void> {
+  if (refineTargetId.value === item.id) {
+    refineTargetId.value = null;
+    return;
+  }
+  closeFollowUp(item.id);
+  refineTargetId.value = item.id;
+  await nextTick();
+  scrollArea.value
+    ?.querySelector<HTMLElement>(`[data-answer="${item.id}"]`)
+    ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-/** The pill opens a saved question in configuration, or toggles the certify card. */
+/** "Certified" opens the question in its Certified Questions tab; "Certify" toggles the certify card. */
 function onCertifyAction(item: FlowItem): void {
-  const id = savedQuestionId(item);
-  if (id) emit('openCertified', id);
-  else if (followUps.value[item.id] === 'certify') closeFollowUp(item.id);
-  else openFollowUp(item.id, 'certify');
+  const id = certifiedIdFor(item);
+  if (id) {
+    emit('openCertified', id);
+  } else if (followUps.value[item.id] === 'certify') {
+    closeFollowUp(item.id);
+  } else {
+    if (refineTargetId.value === item.id) refineTargetId.value = null;
+    openFollowUp(item.id, 'certify');
+  }
 }
 
 async function copyResponse(item: FlowItem): Promise<void> {
@@ -419,22 +369,6 @@ function originalLabel(item: FlowItem): string {
 
 function toggleOriginal(itemId: string): void {
   originalOpenId.value = originalOpenId.value === itemId ? null : itemId;
-}
-
-/** Data answers re-ask their own question, so a refined answer doesn't resend the refine note. */
-function reloadText(item: FlowItem): string {
-  return item.answer?.question ?? precedingUserText(items.value, item.id);
-}
-
-function reloadResponse(item: FlowItem): void {
-  if (ratingRequired.value || isAgentRunning.value) return;
-  const text = reloadText(item);
-  if (!text) return;
-  sendToAgent(text);
-}
-
-function canReload(item: FlowItem): boolean {
-  return !ratingRequired.value && !isAgentRunning.value && reloadText(item).length > 0;
 }
 
 function setupHeadline(item: FlowItem): string {
@@ -606,118 +540,80 @@ defineExpose({ openWizard });
       <div ref="scrollArea" class="mx-auto w-full max-w-3xl flex-1 space-y-4 overflow-y-auto px-4 py-6">
         <template v-for="item in items" :key="item.id">
           <!-- Assistant message -->
-          <div v-if="item.kind === 'assistant-text'">
+          <div v-if="item.kind === 'assistant-text'" :data-answer="item.id">
             <div class="flex justify-start">
               <div class="max-w-[85%]">
                 <div class="w-fit max-w-full whitespace-pre-line rounded-2xl rounded-bl-sm bg-[#F5F1FC] px-3.5 py-2 text-sm leading-relaxed text-[#25262E]">
                   {{ item.text }}
                 </div>
 
-                <div class="mt-1.5 flex items-center gap-0.5 text-[#3D4C66]">
+                <!-- Data answers only: setup and status messages aren't answers to refine or certify -->
+                <div v-if="item.answer" class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[#3D4C66]">
                   <button
                     type="button"
-                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-                    title="Reload response"
-                    aria-label="Reload response"
-                    :disabled="!canReload(item)"
-                    @click="reloadResponse(item)"
+                    class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="
+                      refineTargetId === item.id
+                        ? 'border-[#3B1770] bg-[#F5F1FC] text-[#3B1770]'
+                        : 'border-[#E2E2E2] hover:border-[#3B1770] hover:text-[#3B1770]'
+                    "
+                    title="Refine this answer with more context"
+                    :aria-pressed="refineTargetId === item.id"
+                    :disabled="isAgentRunning"
+                    @click="toggleRefine(item)"
                   >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <path d="M20 12a8 8 0 1 1-2.3-5.7" stroke-linecap="round" />
                       <path d="M20 4v5h-5" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
+                    Refine
                   </button>
                   <button
                     type="button"
-                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
-                    :class="ratings[item.id] === 'up' ? 'text-[#3B1770]' : ''"
-                    title="Helpful"
-                    :aria-label="ratings[item.id] === 'up' ? 'Marked helpful' : 'Mark as helpful'"
-                    :aria-pressed="ratings[item.id] === 'up'"
-                    @click="rateResponse(item.id, 'up')"
+                    class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+                    :class="
+                      certifiedIdFor(item)
+                        ? 'border-[#D4C4EF] bg-[#F5F1FC] text-[#3B1770] hover:border-[#3B1770]'
+                        : followUps[item.id] === 'certify'
+                          ? 'border-[#3B1770] bg-[#F5F1FC] text-[#3B1770]'
+                          : 'border-[#E2E2E2] hover:border-[#3B1770] hover:text-[#3B1770]'
+                    "
+                    :title="certifiedIdFor(item) ? 'Question certified. View it in Certified Questions' : 'Certify this question'"
+                    :aria-pressed="certifiedIdFor(item) ? undefined : followUps[item.id] === 'certify'"
+                    @click="onCertifyAction(item)"
                   >
-                    <svg v-if="ratings[item.id] === 'up'" viewBox="0 0 24 24" class="h-[15px] w-[15px]" fill="currentColor" aria-hidden="true">
-                      <path
-                        d="M2 9h3v12H2a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1Zm5.293-1.293 6.4-6.4a.5.5 0 0 1 .654-.047l.853.64a1.5 1.5 0 0 1 .553 1.57L14.6 8H21a2 2 0 0 1 2 2v2.104a2 2 0 0 1-.15.762l-3.095 7.515a1 1 0 0 1-.925.619H8a1 1 0 0 1-1-1V8.414a1 1 0 0 1 .293-.707Z"
-                      />
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" stroke-linejoin="round" />
+                      <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
-                    <svg v-else viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                      <path
-                        d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
-                        stroke-linejoin="round"
-                        stroke-linecap="round"
-                      />
-                    </svg>
+                    {{ certifiedIdFor(item) ? 'Certified' : 'Certify' }}
                   </button>
                   <button
                     type="button"
-                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
-                    :class="ratings[item.id] === 'down' ? 'text-[#565660]' : ''"
-                    title="Not helpful"
-                    :aria-label="ratings[item.id] === 'down' ? 'Marked not helpful' : 'Mark as not helpful'"
-                    :aria-pressed="ratings[item.id] === 'down'"
-                    @click="rateResponse(item.id, 'down')"
-                  >
-                    <svg v-if="ratings[item.id] === 'down'" viewBox="0 0 24 24" class="h-[15px] w-[15px] rotate-180" fill="currentColor" aria-hidden="true">
-                      <path
-                        d="M2 9h3v12H2a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1Zm5.293-1.293 6.4-6.4a.5.5 0 0 1 .654-.047l.853.64a1.5 1.5 0 0 1 .553 1.57L14.6 8H21a2 2 0 0 1 2 2v2.104a2 2 0 0 1-.15.762l-3.095 7.515a1 1 0 0 1-.925.619H8a1 1 0 0 1-1-1V8.414a1 1 0 0 1 .293-.707Z"
-                      />
-                    </svg>
-                    <svg v-else viewBox="0 0 24 24" class="h-4 w-4 rotate-180" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                      <path
-                        d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
-                        stroke-linejoin="round"
-                        stroke-linecap="round"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[#F1F1F1]"
-                    :title="copiedId === item.id ? 'Copied' : 'Copy response'"
-                    :aria-label="copiedId === item.id ? 'Copied' : 'Copy response'"
+                    class="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors hover:bg-[#F1F1F1]"
+                    title="Copy response"
                     @click="copyResponse(item)"
                   >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                    <svg v-if="copiedId === item.id" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <rect x="8" y="8" width="11" height="11" rx="2" />
                       <path d="M5 15V6a2 2 0 0 1 2-2h9" stroke-linecap="round" />
                     </svg>
+                    {{ copiedId === item.id ? 'Copied' : 'Copy' }}
                   </button>
                   <button
                     type="button"
-                    class="flex h-7 w-7 items-center justify-center rounded-md font-mono text-[13px] leading-none transition-colors hover:bg-[#F1F1F1]"
+                    class="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors hover:bg-[#F1F1F1]"
                     :class="originalOpenId === item.id ? 'bg-[#F1F1F1]' : ''"
-                    :title="item.answer ? 'View query' : 'View original response'"
-                    :aria-label="originalLabel(item)"
+                    :title="originalLabel(item)"
                     :aria-pressed="originalOpenId === item.id"
                     @click="toggleOriginal(item.id)"
                   >
-                    { }
+                    <span class="font-mono text-[12px] leading-none" aria-hidden="true">{ }</span>
+                    Code
                   </button>
-                  <!-- Certified once saved from this answer; "Certify" reopens a dismissed card -->
-                  <template v-if="savedQuestionId(item) || canCertify(item)">
-                    <span class="mx-1.5 h-5 w-px bg-[#E2E2E2]" aria-hidden="true" />
-                    <button
-                      type="button"
-                      class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
-                      :class="
-                        savedQuestionId(item)
-                          ? 'border-[#D4C4EF] bg-[#F5F1FC] text-[#3B1770] hover:border-[#3B1770]'
-                          : followUps[item.id] === 'certify'
-                            ? 'border-[#3B1770] bg-[#F5F1FC] text-[#3B1770]'
-                            : 'border-[#E2E2E2] text-[#3D4C66] hover:border-[#3B1770] hover:text-[#3B1770]'
-                      "
-                      :title="savedQuestionId(item) ? 'Question certified. View it in Configuration' : 'Certify this question'"
-                      :aria-pressed="savedQuestionId(item) ? undefined : followUps[item.id] === 'certify'"
-                      @click="onCertifyAction(item)"
-                    >
-                      <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" stroke-linejoin="round" />
-                        <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                      {{ savedQuestionId(item) ? 'Certified' : 'Certify' }}
-                    </button>
-                  </template>
                 </div>
 
                 <div v-if="originalOpenId === item.id && item.answer" class="mt-1.5 space-y-1.5">
@@ -728,74 +624,12 @@ defineExpose({ openWizard });
                   v-else-if="originalOpenId === item.id"
                   class="mt-1.5 whitespace-pre-wrap rounded-lg bg-[#F7F7F8] px-3 py-2 font-mono text-xs leading-relaxed text-[#25262E]"
                 >{{ item.text }}</pre>
-
-                <p v-if="ratings[item.id] && !savedQuestionId(item)" class="mt-1.5 flex items-center gap-1 text-xs text-[#6B6B6B]">
-                  <svg viewBox="0 0 24 24" class="h-3 w-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                  {{ captionFor(item.id) }}
-                </p>
               </div>
             </div>
 
-            <!-- The gate: full-width and elevated so it reads as the screen's next required action, not a footnote on the reply. -->
-            <section
-              v-if="!skipRatingGate && !ratings[item.id] && findLatestAssistantId(items) === item.id && !isAgentRunning"
-              :aria-labelledby="`quality-prompt-title-${item.id}`"
-              class="rating-prompt-enter relative mt-3 w-full rounded-2xl bg-[#3B1770] p-5"
-            >
-              <!-- Caret ties the card back to the thumbs icons it echoes, like a tooltip pointing up at its anchor. -->
-              <span class="absolute -top-1.5 left-14 h-3 w-3 rotate-45 rounded-tl-[2px] bg-[#3B1770]" aria-hidden="true" />
-
-              <h2 :id="`quality-prompt-title-${item.id}`" class="text-base font-semibold text-white">
-                {{ gateTitle(item) }}
-              </h2>
-              <p class="mt-0.5 text-sm text-[#D9C9F0]">{{ gateSubtitle(item) }}</p>
-              <div class="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  class="group flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#E2E2E2] bg-white text-sm font-semibold text-[#25262E] transition-all hover:border-[#3B1770] hover:bg-[#F8F6FC] active:scale-[0.98]"
-                  @click="rateResponse(item.id, 'up')"
-                >
-                  <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0 text-[#3B1770]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                    <path
-                      d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
-                      stroke-linejoin="round"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                  Helpful
-                </button>
-                <button
-                  type="button"
-                  class="group flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#E2E2E2] bg-white text-sm font-semibold text-[#25262E] transition-all hover:border-[#8B8B93] hover:bg-[#F7F7F8] active:scale-[0.98]"
-                  @click="rateResponse(item.id, 'down')"
-                >
-                  <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0 rotate-180 text-[#6B6B6B]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                    <path
-                      d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.2-7.2A1.6 1.6 0 0 1 14.6 4v4h5.1a2 2 0 0 1 2 2.3l-1.1 7A2 2 0 0 1 18.6 19H7"
-                      stroke-linejoin="round"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                  Not helpful
-                </button>
-              </div>
-
-              <label class="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-[#D9C9F0]">
-                <input
-                  v-model="skipRatingGate"
-                  type="checkbox"
-                  class="h-3.5 w-3.5 cursor-pointer rounded-sm"
-                  style="accent-color: #ffffff"
-                />
-                Don't show this again
-              </label>
-            </section>
-
-            <!-- Rating follow-ups take the gate's place: 👍 certifies, 👎 refines -->
+            <!-- Certify card: opened from the answer's Certify button; behaves as designed -->
             <div
-              v-else-if="followUps[item.id] === 'certify' && !isAgentRunning"
+              v-if="followUps[item.id] === 'certify' && !isAgentRunning"
               :data-follow-up="item.id"
               class="rating-prompt-enter"
             >
@@ -825,18 +659,6 @@ defineExpose({ openWizard });
                 :source-name="activeSource?.name ?? ''"
                 :blocked-reason="activeSource ? null : 'Create or import a data source to certify questions about it.'"
                 @save="onCertify(item, $event)"
-                @dismiss="closeFollowUp(item.id)"
-              />
-            </div>
-            <div
-              v-else-if="followUps[item.id] === 'refine' && !isAgentRunning"
-              :data-follow-up="item.id"
-              class="rating-prompt-enter"
-            >
-              <RefineAnswerCard
-                :card-id="item.id"
-                :has-query="Boolean(item.answer)"
-                @refine="onRefine(item, $event)"
                 @dismiss="closeFollowUp(item.id)"
               />
             </div>
@@ -930,7 +752,7 @@ defineExpose({ openWizard });
         </div>
 
         <!-- Suggested questions about the new data source -->
-        <div v-if="suggestedQuestions.length && !ratingRequired" class="pt-1">
+        <div v-if="suggestedQuestions.length" class="pt-1">
           <p class="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#9A9A9A]">Ask about this data source</p>
           <div class="flex flex-col items-start gap-2">
             <button
@@ -946,18 +768,29 @@ defineExpose({ openWizard });
         </div>
       </div>
 
+      <!-- Refine panel: docked above the composer for one answer at a time; a new prompt closes it -->
+      <div v-if="refineTarget && !isAgentRunning" class="rating-prompt-enter mx-auto w-full max-w-3xl flex-shrink-0 px-4 pt-2">
+        <RefineAnswerCard
+          :key="refineTarget.id"
+          :card-id="refineTarget.id"
+          :question="refineTarget.answer?.question ?? ''"
+          :has-query="Boolean(refineTarget.answer)"
+          @refine="onDockRefine"
+          @dismiss="refineTargetId = null"
+        />
+      </div>
+
       <!-- Composer -->
       <div class="mx-auto w-full max-w-3xl flex-shrink-0 p-4">
         <div
-          class="flex items-center gap-2 rounded-full border-2 bg-white py-1.5 pl-5 pr-1.5 transition-colors"
-          :class="ratingRequired ? 'border-[#E2E2E2]' : 'border-[#C9B8E8] focus-within:border-[#8B5CF6]'"
+          class="flex items-center gap-2 rounded-full border-2 border-[#C9B8E8] bg-white py-1.5 pl-5 pr-1.5 transition-colors focus-within:border-[#8B5CF6]"
         >
           <textarea
             ref="composer"
             v-model="draft"
             rows="1"
             :placeholder="composerPlaceholder"
-            :disabled="isAgentRunning || ratingRequired"
+            :disabled="isAgentRunning"
             class="max-h-28 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-5 text-[#25262E] placeholder:text-[#9A9A9A] focus:outline-none disabled:cursor-not-allowed"
             @keydown.enter.exact.prevent="onSend"
           ></textarea>

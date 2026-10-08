@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { REFINE_REASONS, type RefineReason, type RefineRequest } from '~/composables/agentDataAnswers';
 
-/** Thumbs-down follow-up: says what missed so the agent can re-run the answer. */
+/** Refine panel, docked above the composer: context on what missed so the agent re-runs the answer. */
 withDefaults(
   defineProps<{
     cardId: string;
+    /** The question behind the answer being refined, quoted for context. */
+    question?: string;
     /** False on replies that aren't data answers: there's no query to re-run. */
     hasQuery?: boolean;
   }>(),
-  { hasQuery: true },
+  { question: '', hasQuery: true },
 );
 
 const emit = defineEmits<{
@@ -19,6 +21,9 @@ const emit = defineEmits<{
 
 const reason = ref<RefineReason | null>(null);
 const note = ref('');
+const noteField = ref<HTMLTextAreaElement | null>(null);
+
+onMounted(() => noteField.value?.focus());
 
 const canRefine = computed(() => reason.value !== null || note.value.trim().length > 0);
 
@@ -35,19 +40,16 @@ function onRefine(): void {
 <template>
   <section
     :aria-labelledby="`refine-title-${cardId}`"
-    class="relative mt-3 w-full rounded-2xl border border-[#E2E2E2] bg-white p-5 shadow-sm"
+    class="relative w-full rounded-2xl border border-[#E2E2E2] bg-white p-4 shadow-[0_-4px_16px_rgba(37,38,46,0.06)]"
+    @keydown.esc="emit('dismiss')"
   >
-    <span
-      class="absolute -top-1.5 left-[4.25rem] h-3 w-3 rotate-45 rounded-tl-[2px] border-l border-t border-[#E2E2E2] bg-white"
-      aria-hidden="true"
-    />
-
-    <h2 :id="`refine-title-${cardId}`" class="text-base font-semibold text-[#25262E]">What was off?</h2>
-    <p class="mt-0.5 text-sm text-[#6B6B6B]">
+    <h2 :id="`refine-title-${cardId}`" class="text-base font-semibold text-[#25262E]">Refine this answer</h2>
+    <p v-if="question" class="mt-0.5 truncate text-xs text-[#9A9A9A]" :title="question">“{{ question }}”</p>
+    <p class="mt-1 text-sm text-[#6B6B6B]">
       {{ hasQuery ? "Tell me what missed and I'll re-run the query." : "Tell me what missed and I'll take it into account." }}
     </p>
 
-    <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="What was off">
+    <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="What was off">
       <button
         v-for="option in REFINE_REASONS"
         :key="option.id"
@@ -65,12 +67,13 @@ function onRefine(): void {
       </button>
     </div>
 
-    <label :for="`refine-note-${cardId}`" class="mt-4 block text-[11px] font-semibold uppercase tracking-wide text-[#6B6B6B]">
-      Tell me more
-      <span class="ml-1 font-normal normal-case tracking-normal text-[#9A9A9A]">(optional)</span>
+    <label :for="`refine-note-${cardId}`" class="mt-3 block text-[11px] font-semibold uppercase tracking-wide text-[#6B6B6B]">
+      Add context
+      <span class="ml-1 font-normal normal-case tracking-normal text-[#9A9A9A]">(optional if you pick a reason)</span>
     </label>
     <textarea
       :id="`refine-note-${cardId}`"
+      ref="noteField"
       v-model="note"
       rows="2"
       placeholder="e.g. exclude refunded orders"
@@ -78,21 +81,21 @@ function onRefine(): void {
       @keydown.enter.exact.prevent="onRefine"
     ></textarea>
 
-    <div class="mt-4 flex items-center gap-3">
+    <div class="mt-3 flex items-center gap-3">
       <button
         type="button"
-        class="h-10 rounded-xl bg-[#3B1770] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#4B1E8C] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+        class="h-9 rounded-xl bg-[#3B1770] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#4B1E8C] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
         :disabled="!canRefine"
         @click="onRefine"
       >
-        Refine answer
+        Refine
       </button>
       <button
         type="button"
-        class="h-10 rounded-xl px-3 text-sm font-medium text-[#6B6B6B] transition-colors hover:bg-[#F7F7F8] hover:text-[#25262E]"
+        class="h-9 rounded-xl px-3 text-sm font-medium text-[#6B6B6B] transition-colors hover:bg-[#F7F7F8] hover:text-[#25262E]"
         @click="emit('dismiss')"
       >
-        Skip
+        Cancel
       </button>
     </div>
   </section>

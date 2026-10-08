@@ -1,0 +1,748 @@
+/*
+ * Legacy (Logi Composer) chrome for the cq-legacy illustration.
+ * A curated subset of logi-composer.css (Blueprint 3, react-flow) plus
+ * hand-written equivalents of its emotion css-* classes.
+ * Every selector starts with .legacy-ui and targets legacy classes, so the
+ * embedded CertifiedQuestionsList keeps the app's Tailwind look.
+ */
+
+/* ---------- Chrome containers (legacy type lives here, never on .legacy-ui) ---------- */
+
+.legacy-ui .lg-chrome {
+  color: #25262e;
+  font-size: 14px;
+  line-height: 1.28581;
+}
+
+.legacy-ui .lg-head {
+  flex-shrink: 0;
+}
+
+/* ---------- Blueprint icon ---------- */
+
+.legacy-ui .bp3-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: text-bottom;
+}
+
+.legacy-ui .bp3-icon > svg {
+  display: block;
+}
+
+.legacy-ui .bp3-icon > svg:not([fill]) {
+  fill: currentColor;
+}
+
+.legacy-ui .lg-icon-dark {
+  color: #394b59;
+}
+
+/* ---------- Advisory banner ---------- */
+
+.legacy-ui .lg-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px 16px;
+  background: rgb(242, 189, 127);
+  color: #1c2127;
+  line-height: 20px;
+}
+
+.legacy-ui .lg-banner-icon {
+  color: #c9561c;
+}
+
+/* ---------- Top bar ---------- */
+
+.legacy-ui .lg-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid #d5dce4;
+}
+
+.legacy-ui .lg-topbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.legacy-ui .lg-topbar-icon {
+  color: #5c7080;
+}
+
+.legacy-ui .bp3-button.lg-save {
+  min-height: 40px;
+  margin-left: 16px;
+  padding: 0 16px;
+}
+
+/* ---------- Blueprint breadcrumbs ---------- */
+
+.legacy-ui .bp3-breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  cursor: default;
+}
+
+.legacy-ui .lg-crumb {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.legacy-ui .lg-crumb:not(:last-child)::after {
+  content: '';
+  display: block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0 5px;
+  background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill-rule='evenodd' clip-rule='evenodd' d='M10.71 7.29l-4-4a1.003 1.003 0 00-1.42 1.42L8.59 8 5.3 11.29c-.19.18-.3.43-.3.71a1.003 1.003 0 001.71.71l4-4c.18-.18.29-.43.29-.71 0-.28-.11-.53-.29-.71z' fill='%235C7080'/%3e%3c/svg%3e");
+}
+
+.legacy-ui .bp3-breadcrumb,
+.legacy-ui .bp3-breadcrumb-current {
+  display: inline-flex;
+  align-items: center;
+  font-size: 16px;
+}
+
+.legacy-ui .bp3-breadcrumb {
+  color: #5c7080;
+}
+
+.legacy-ui .bp3-breadcrumb.lg-crumb-link {
+  color: #106ba3;
+  white-space: nowrap;
+}
+
+.legacy-ui .bp3-breadcrumb.bp3-breadcrumb-current {
+  min-width: 0;
+  color: #25262e;
+  font-weight: 400;
+}
+
+/* ---------- Blueprint editable text (display only) ---------- */
+
+.legacy-ui .bp3-editable-text {
+  position: relative;
+  display: inline-block;
+  min-width: 0;
+  max-width: 200px;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.legacy-ui .bp3-editable-text-content {
+  display: block;
+  overflow: hidden;
+  height: 20px;
+  padding-right: 2px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* ---------- Blueprint buttons ---------- */
+
+.legacy-ui .bp3-button {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1.28581;
+  text-align: left;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.legacy-ui .bp3-button > * {
+  flex-grow: 0;
+  flex-shrink: 0;
+  margin-right: 7px;
+}
+
+.legacy-ui .bp3-button > :last-child {
+  margin-right: 0;
+}
+
+.legacy-ui .bp3-button-text {
+  flex: 0 1 auto;
+}
+
+.legacy-ui .bp3-button:disabled,
+.legacy-ui .bp3-button.bp3-disabled {
+  cursor: not-allowed;
+}
+
+.legacy-ui .bp3-button.bp3-small {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0 7px;
+}
+
+.legacy-ui .bp3-button.bp3-minimal {
+  background: none;
+  box-shadow: none;
+}
+
+/* Legacy theme primary (Entity, Save Source). */
+.legacy-ui .bp3-button.bp3-intent-primary {
+  border: 1px solid #3b1770;
+  background-color: #3b1770;
+  color: #ffffff;
+}
+
+.legacy-ui .bp3-button.lg-save:hover:not(:disabled) {
+  border-color: #2e115a;
+  background-color: #2e115a;
+}
+
+.legacy-ui .bp3-button.bp3-intent-primary:disabled,
+.legacy-ui .bp3-button.bp3-intent-primary.bp3-disabled {
+  border-color: rgb(197, 203, 211);
+  background-color: rgb(197, 203, 211);
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.legacy-ui .bp3-button.lg-btn-outline {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #c5ced8;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #25262e;
+}
+
+.legacy-ui .bp3-button-group {
+  display: inline-flex;
+}
+
+.legacy-ui .bp3-button-group.bp3-minimal .bp3-button {
+  background: none;
+  box-shadow: none;
+}
+
+.legacy-ui .bp3-button-group.bp3-vertical {
+  flex-direction: column;
+  align-items: stretch;
+  vertical-align: top;
+}
+
+.legacy-ui .bp3-button-group.bp3-vertical .bp3-button {
+  width: 100%;
+  margin-right: 0;
+}
+
+/* ---------- Blueprint tabs ---------- */
+
+.legacy-ui .lg-tabs {
+  padding: 8px 16px 0;
+}
+
+.legacy-ui .bp3-tab-list {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: inset 0 -1px 0 #d5dce4;
+  list-style: none;
+}
+
+.legacy-ui .bp3-tab {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  max-width: 100%;
+  padding: 0 12px 0 14px;
+  color: #25262e;
+  font-size: 12px;
+  line-height: 30px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+  cursor: pointer;
+}
+
+.legacy-ui .bp3-tab[aria-selected='true'] {
+  box-shadow: inset 0 -2px 0 #3b1770;
+}
+
+.legacy-ui .bp3-tab:focus {
+  outline: none;
+}
+
+.legacy-ui .bp3-tab:focus-visible {
+  outline: 2px solid rgba(59, 23, 112, 0.35);
+  outline-offset: -2px;
+}
+
+.legacy-ui .lg-tab-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+}
+
+.legacy-ui .lg-tab-icon {
+  color: #67788e;
+}
+
+.legacy-ui .bp3-tab[aria-selected='true'] .lg-tab-icon {
+  color: #25262e;
+}
+
+/* ---------- Source Creation body ---------- */
+
+.legacy-ui .lg-body {
+  container: lg-body / inline-size;
+  display: flex;
+  flex: 1 1 0%;
+  gap: 10px;
+  min-height: 0;
+  padding: 4px 16px 18px;
+  background: #ffffff;
+}
+
+.legacy-ui .lg-canvas {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 8px;
+  padding: 16px;
+  border: 2px dashed #8a9ba8;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.legacy-ui .lg-add-join {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+}
+
+.legacy-ui .lg-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+}
+
+.legacy-ui .lg-toggle .bp3-button {
+  min-height: 40px;
+  padding: 0 18px;
+  font-size: 16px;
+}
+
+.legacy-ui .lg-toggle .bp3-button:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+.legacy-ui .lg-toggle .bp3-button:last-child {
+  border-left: none;
+  border-radius: 0 2px 2px 0;
+}
+
+/* ---------- react-flow ---------- */
+
+.legacy-ui .lg-flow {
+  container: lg-flow / inline-size;
+  position: relative;
+  flex: 1 1 0%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Viewport transform from the legacy HTML at >= 540px; smaller steps keep Output in view. */
+.legacy-ui .react-flow__viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  transform: translate(-14px, 60px) scale(0.66);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+@container lg-flow (min-width: 355px) {
+  .legacy-ui .react-flow__viewport {
+    transform: translate(-16px, 56px) scale(0.76);
+  }
+}
+
+@container lg-flow (min-width: 410px) {
+  .legacy-ui .react-flow__viewport {
+    transform: translate(-18px, 52px) scale(0.88);
+  }
+}
+
+@container lg-flow (min-width: 465px) {
+  .legacy-ui .react-flow__viewport {
+    transform: translate(-22px, 46px) scale(1);
+  }
+}
+
+@container lg-flow (min-width: 540px) {
+  .legacy-ui .react-flow__viewport {
+    transform: translate(-25.2937px, 39.5407px) scale(1.15628);
+  }
+}
+
+.legacy-ui .react-flow__edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.legacy-ui .react-flow__edge-path {
+  fill: none;
+  stroke: rgb(103, 120, 142);
+  stroke-width: 1;
+}
+
+.legacy-ui .react-flow__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+  user-select: none;
+}
+
+/* Inline node styles from the legacy HTML. */
+.legacy-ui .lg-node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  max-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid rgb(184, 197, 213);
+  border-radius: 4px;
+  background: rgb(240, 249, 255);
+  box-shadow: rgba(0, 0, 0, 0.1) 0 1px 3px;
+  color: #25262e;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.legacy-ui .lg-node.lg-node-join {
+  background: rgb(250, 250, 250);
+}
+
+.legacy-ui .lg-node-logo {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.legacy-ui .lg-node-label {
+  flex-shrink: 0;
+}
+
+.legacy-ui .lg-node-lead {
+  margin-right: 6px;
+  color: #394b59;
+}
+
+.legacy-ui .lg-node-minus {
+  margin-left: 6px;
+  color: #394b59;
+}
+
+.legacy-ui .react-flow__handle {
+  position: absolute;
+  box-sizing: content-box;
+  width: 6px;
+  height: 6px;
+  min-width: 5px;
+  min-height: 5px;
+  border: 1px solid #ffffff;
+  border-radius: 100%;
+  background: rgb(103, 120, 142);
+  pointer-events: none;
+}
+
+.legacy-ui .react-flow__handle-left {
+  top: 50%;
+  left: -4px;
+  transform: translate(0, -50%);
+}
+
+.legacy-ui .react-flow__handle-right {
+  top: 50%;
+  right: -4px;
+  transform: translate(0, -50%);
+}
+
+.legacy-ui .react-flow__panel {
+  position: absolute;
+  z-index: 5;
+  margin: 15px;
+}
+
+.legacy-ui .react-flow__panel.bottom {
+  bottom: 0;
+}
+
+.legacy-ui .react-flow__panel.left {
+  left: 0;
+}
+
+.legacy-ui .react-flow__controls {
+  box-shadow: 0 0 2px 1px rgba(0, 0, 0, 0.08);
+}
+
+.legacy-ui .react-flow__controls-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+  width: 16px;
+  height: 16px;
+  padding: 5px;
+  border: none;
+  border-bottom: 1px solid #eeeeee;
+  background: #fefefe;
+  user-select: none;
+}
+
+.legacy-ui .react-flow__controls-button svg {
+  width: 100%;
+  max-width: 12px;
+  max-height: 12px;
+}
+
+/* ---------- Right panel ---------- */
+
+.legacy-ui .lg-panel {
+  display: flex;
+  flex-shrink: 0;
+  width: 300px;
+  min-height: 0;
+  border: 1px solid #d5dce4;
+  background: #ffffff;
+}
+
+@container lg-body (min-width: 900px) {
+  .legacy-ui .lg-panel {
+    width: 340px;
+  }
+}
+
+@container lg-body (min-width: 1040px) {
+  .legacy-ui .lg-panel {
+    width: 401px;
+  }
+}
+
+.legacy-ui .lg-rail {
+  flex-shrink: 0;
+  width: 40px;
+  border-right: 1px solid #d5dce4;
+  background: #f5f8fa;
+}
+
+.legacy-ui .lg-rail .bp3-button-group {
+  display: flex;
+}
+
+.legacy-ui .lg-rail .bp3-button {
+  min-height: 40px;
+  padding: 0;
+  border-radius: 0;
+  color: #394b59;
+}
+
+.legacy-ui .lg-rail .bp3-button.bp3-active {
+  background: #ffffff;
+  box-shadow: inset 0 -1px 0 #d5dce4;
+}
+
+.legacy-ui .lg-panel-main {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 24px;
+}
+
+.legacy-ui .bp3-tab-list.lg-subtabs {
+  justify-content: center;
+  gap: 28px;
+  width: auto;
+  box-shadow: none;
+}
+
+.legacy-ui .lg-subtabs .bp3-tab {
+  padding: 0 10px;
+  font-size: 14px;
+  box-shadow: inset 0 -2px 0 #d5dce4;
+}
+
+.legacy-ui .lg-subtabs .bp3-tab.lg-tab-on {
+  box-shadow: inset 0 -2px 0 #3b1770;
+}
+
+.legacy-ui .lg-subtab-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+}
+
+.legacy-ui .lg-subtab-strong {
+  color: rgb(37, 38, 46);
+  font-weight: 700;
+}
+
+.legacy-ui .lg-subtab-muted {
+  color: rgb(103, 120, 142);
+  font-weight: 400;
+}
+
+/* ---------- Blueprint tree ---------- */
+
+.legacy-ui .bp3-tree.lg-tree {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 16px 0 15px;
+}
+
+.legacy-ui .bp3-tree-node-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.legacy-ui .bp3-tree-root {
+  position: relative;
+  background-color: transparent;
+}
+
+.legacy-ui .bp3-tree-node-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 34px;
+  padding-right: 5px;
+}
+
+.legacy-ui .bp3-tree-node-caret {
+  min-width: 30px;
+  padding: 7px;
+  color: #25262e;
+}
+
+.legacy-ui .bp3-tree-node-label {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.legacy-ui .bp3-tree-node-label.lg-tree-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legacy-ui .lg-tree-logo {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.legacy-ui .lg-tree-text {
+  overflow: hidden;
+  color: #25262e;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.legacy-ui .bp3-button.lg-add-sql {
+  flex-shrink: 0;
+  margin: 16px;
+}
+
+/* ---------- Updating shimmer (approach from WorkspaceSourcePanel) ---------- */
+
+.legacy-ui .lg-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.legacy-ui .lg-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, 0.8) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: lg-preview-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes lg-preview-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* ---------- Inert and static parts never read as clickable (kept last to win ties) ---------- */
+
+.legacy-ui .lg-inert,
+.legacy-ui .lg-static .bp3-button,
+.legacy-ui .lg-static .bp3-tab,
+.legacy-ui .lg-static .bp3-tree-node-caret,
+.legacy-ui .lg-static .react-flow__controls-button {
+  cursor: default;
+}

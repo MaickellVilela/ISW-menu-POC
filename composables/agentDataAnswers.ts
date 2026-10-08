@@ -267,9 +267,10 @@ export function buildRefinedAnswer(answer: DataAnswer, request: RefineRequest): 
   };
 }
 
-/** The user bubble a refine request shows in the thread, e.g. "Wrong numbers: exclude refunds". */
+/** The user bubble a refine request shows, e.g. "Wrong numbers: exclude refunds"; a note alone stands on its own. */
 export function buildRefineRequestText(request: RefineRequest): string {
   const label = REFINE_REASONS.find((reason) => reason.id === request.reason)?.label ?? 'Refine';
   const note = request.note.trim();
+  if (request.reason === 'other' && note) return note;
   return note ? `${label}: ${note}` : label;
 }

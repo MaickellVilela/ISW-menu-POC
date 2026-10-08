@@ -4,7 +4,7 @@ import CertifiedQuestionForm from '~/components/workspace/CertifiedQuestionForm.
 import CertifiedQuestionItem from '~/components/workspace/CertifiedQuestionItem.vue';
 import { useCertifiedQuestions } from '~/composables/useCertifiedQuestions';
 
-/** The open source's certified questions, managed in the workspace's configuration. */
+/** The open source's certified questions, managed in its Certified Questions tab. */
 const props = withDefaults(
   defineProps<{
     sourceId: string;
@@ -98,7 +98,7 @@ function isHighlighted(questionId: string): boolean {
         </span>
         <p class="mt-3 text-sm font-semibold text-[#25262E]">No certified questions yet</p>
         <p class="mt-1 text-sm text-[#6B6B6B]">
-          Add one here, or give an agent answer about this source a thumbs up to certify it.
+          Add one here, or select Certify under an agent answer about this source.
         </p>
       </div>
     </div>

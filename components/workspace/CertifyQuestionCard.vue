@@ -13,7 +13,7 @@ interface PhrasingOption {
 }
 
 /**
- * Thumbs-up follow-up: certifies the answered question, or, when it's already
+ * Opened from an answer's Certify button: certifies the answered question, or, when it's already
  * certified, updates that question's phrasings and notes. On a reply that isn't
  * an answer, the author types the question instead.
  */

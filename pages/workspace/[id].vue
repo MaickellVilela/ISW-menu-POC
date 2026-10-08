@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import SimbaChatPanel from '~/components/workspace/SimbaChatPanel.vue';
 import WorkspaceSourcePanel from '~/components/workspace/WorkspaceSourcePanel.vue';
+import LegacySourceEditor from '~/components/legacy/LegacySourceEditor.vue'; // cq-legacy illustration
 import AssetListPanel from '~/components/workspace/AssetListPanel.vue';
 import PublishConfirmDialog from '~/components/workspace/PublishConfirmDialog.vue';
 import PublishHintMarker from '~/components/workspace/PublishHintMarker.vue';
@@ -159,7 +160,14 @@ async function onHeaderImport(): Promise<void> {
   artifactsPanelRef.value?.openImport();
 }
 
+// cq-legacy illustration: in Q4 (26.4) certified questions live in a tab of the current (legacy)
+// source editor. Set to false to bring back the future editor and its Configure panel.
+const LEGACY_SOURCE_EDITOR = true;
+type LegacyTab = 'source-creation' | 'certified-questions';
+const legacyTab = ref<LegacyTab>('source-creation');
+
 function onHeaderCreate(): void {
+  legacyTab.value = 'source-creation'; // cq-legacy illustration
   createManualSource();
 }
 
@@ -169,10 +177,12 @@ const importedSourceNames = computed(() =>
 
 /** A finished agent run adds the source to the list and opens it for editing. */
 function onSourceCreated(setup: DataSourceSetup) {
+  legacyTab.value = 'source-creation'; // cq-legacy illustration
   addFromSetup(setup);
 }
 
 function onImportSource(sourceId: string) {
+  legacyTab.value = 'source-creation'; // cq-legacy illustration
   importFromCatalog(sourceId);
 }
 
@@ -238,7 +248,7 @@ function onAgentUpdate(): void {
   }, CARD_HIGHLIGHT_MS + 1000);
 }
 
-/* Certified questions: the chat answers from the active source; configuration manages them. */
+/* Certified questions: the chat answers from the active source; the editor's Certified Questions tab manages them. */
 
 const certifiedHighlightId = ref<string | null>(null);
 let certifiedHighlightTimer: ReturnType<typeof setTimeout> | null = null;
@@ -263,7 +273,7 @@ function clearCertifiedHighlight(): void {
   certifiedHighlightId.value = null;
 }
 
-/* Configuration takes the canvas's place and hides the agent, from preview or edit. */
+/* Future editor only: configuration takes the canvas's place and hides the agent, from preview or edit. */
 
 /** The source being configured; another source opening (or none) ends it. */
 const configuringSourceId = ref<string | null>(null);
@@ -280,14 +290,18 @@ function endConfigure(): void {
   configuringSourceId.value = null;
 }
 
-/** Opens the question's source in configuration, on Certified questions, and rings the question. */
+/** Opens the question's source on its Certified Questions tab and rings the question. */
 function onOpenCertified(questionId: string): void {
   const question = findQuestion(questionId);
   if (!question || isEditingSource.value) return;
   if (!assets.value.some((asset) => asset.id === question.sourceId)) return;
   if (openAssetId.value !== question.sourceId) openEditor(question.sourceId);
-  configureSection.value = 'certified-questions';
-  configuringSourceId.value = question.sourceId;
+  if (LEGACY_SOURCE_EDITOR) {
+    legacyTab.value = 'certified-questions'; // cq-legacy illustration
+  } else {
+    configureSection.value = 'certified-questions';
+    configuringSourceId.value = question.sourceId;
+  }
   clearCertifiedHighlight();
   certifiedHighlightId.value = questionId;
   certifiedHighlightTimer = setTimeout(() => {
@@ -489,7 +503,19 @@ function onClosePublish() {
       <!-- Preview while chatting; full editor while editing (agent is hidden) -->
       <!-- isolate: the canvas's own layers stay below the floating artifacts panel -->
       <section v-if="isEditorOpen" class="isolate flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <!-- cq-legacy illustration: static legacy editor; certified questions live in its tab -->
+        <LegacySourceEditor
+          v-if="LEGACY_SOURCE_EDITOR"
+          v-model:tab="legacyTab"
+          :source-id="openAssetId ?? ''"
+          :source-name="openAsset?.name ?? ''"
+          :mode="sourceViewMode"
+          :updating="isPreviewUpdating"
+          :certified-highlight-id="certifiedHighlightId"
+          @save="saveEdits"
+        />
         <WorkspaceSourcePanel
+          v-else
           :mode="sourceViewMode"
           :updating="isPreviewUpdating"
           :sources="assets"
