@@ -1,4 +1,4 @@
-# Data Source Creation POC
+# Data Source Creation POC_
 
 Nuxt 3 prototype for building data sources with visual joins. This repo also includes a **code-first design-system starter** in Storybook — tokens and component stories live next to the product, without a Figma file.
 
