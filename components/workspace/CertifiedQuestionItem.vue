@@ -10,11 +10,12 @@ import {
 import { formatAssetModifiedAt } from '~/composables/useWorkspaceAssets';
 
 type ItemTab = 'phrasing' | 'query' | 'comments';
-type EditableField = 'question' | 'summary' | 'sql' | 'comment';
+/** Summary and code are read-only: they're saved from the certified agent answer, not validated here. */
+type EditableField = 'question' | 'comment';
 
-const TABS: { id: ItemTab; label: string }[] = [
+const TABS: { id: ItemTab; label: string; locked?: boolean }[] = [
   { id: 'phrasing', label: 'Phrasing' },
-  { id: 'query', label: 'Code' },
+  { id: 'query', label: 'Code', locked: true },
   { id: 'comments', label: 'Notes' },
 ];
 
@@ -66,8 +67,8 @@ function cancelEdit(): void {
 function saveEdit(): void {
   const field = editing.value;
   if (!field) return;
-  const value = field === 'sql' ? draft.value.trimEnd() : draft.value.trim();
-  // The question and its query can't be blank; the comment can.
+  const value = draft.value.trim();
+  // The question can't be blank; the notes can.
   if (!value && field !== 'comment') return;
   if (value !== props.question[field]) {
     const patch: CertifiedQuestionPatch = {};
@@ -122,7 +123,7 @@ function cancelPhrasing(): void {
           @keydown.esc.prevent="cancelEdit"
         />
         <p class="mt-1.5 text-xs text-[#6B6B6B]">
-          Changing the question doesn't change its code. Check the Code tab still answers it.
+          Changing the question doesn't change its code, which can't be edited. Check the Code tab still answers it.
         </p>
         <div class="mt-2 flex gap-2">
           <button type="button" class="rounded bg-[#3B1770] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#4B1E8C]" @click="saveEdit">Save</button>
@@ -171,12 +172,18 @@ function cancelPhrasing(): void {
           :key="tab.id"
           type="button"
           role="tab"
-          class="px-3 py-2.5 text-sm font-medium"
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium"
           :class="activeTab === tab.id ? 'border-b-2 border-[#3B1770] text-[#3B1770]' : 'text-[#667085] hover:text-[#25262E]'"
           :aria-selected="activeTab === tab.id"
+          :title="tab.locked ? 'Read-only: saved from the certified agent answer' : undefined"
           @click="activeTab = tab.id"
         >
           {{ tab.label }}
+          <svg v-if="tab.locked" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke-linecap="round" />
+          </svg>
+          <span v-if="tab.locked" class="sr-only">(read-only)</span>
         </button>
       </div>
 
@@ -247,81 +254,32 @@ function cancelPhrasing(): void {
           <p v-else class="mt-3 text-xs text-[#9A9A9A]">You've reached {{ MAX_PHRASINGS }} phrasings. Remove one to add another.</p>
         </section>
 
-        <!-- Code -->
+        <!-- Code: read-only, saved from the certified agent answer -->
         <section v-else-if="activeTab === 'query'" class="space-y-4">
+          <p class="flex items-start gap-2 rounded-lg bg-[#F7F7F8] px-3 py-2.5 text-xs leading-relaxed text-[#6B6B6B]">
+            <svg viewBox="0 0 24 24" class="mt-px h-3.5 w-3.5 flex-shrink-0 text-[#9A9A9A]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke-linecap="round" />
+            </svg>
+            <span>
+              The summary and code are saved from the agent answer that was certified, so they can't be edited.
+              To change them, remove this question, then refine the answer in the agent and certify it again.
+            </span>
+          </p>
+
           <div>
-            <div class="flex items-center justify-between">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Summary</p>
-              <button
-                v-if="editing !== 'summary'"
-                type="button"
-                class="flex h-7 w-7 items-center justify-center rounded-md text-[#9A9A9A] transition-colors hover:bg-[#F1F1F1] hover:text-[#3B1770]"
-                title="Edit summary"
-                aria-label="Edit summary"
-                @click="startEdit('summary')"
-              >
-                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                  <path d="M4 20h4L19 9l-4-4L4 16v4z" stroke-linejoin="round" />
-                  <path d="M13.5 6.5l4 4" />
-                </svg>
-              </button>
-            </div>
-            <template v-if="editing === 'summary'">
-              <textarea
-                v-model="draft"
-                data-edit="summary"
-                rows="3"
-                aria-label="Summary"
-                class="mt-1.5 w-full resize-y rounded-lg border border-[#3B1770] bg-white px-4 py-3 text-sm leading-relaxed text-[#25262E] outline-none"
-                @keydown.esc.prevent="cancelEdit"
-              ></textarea>
-              <div class="mt-2 flex gap-2">
-                <button type="button" class="rounded bg-[#3B1770] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#4B1E8C]" @click="saveEdit">Save</button>
-                <button type="button" class="rounded px-2 py-1 text-[12px] font-medium text-[#6B6B6B] hover:bg-[#F7F7F8]" @click="cancelEdit">Cancel</button>
-              </div>
-            </template>
-            <p v-else-if="question.summary" class="mt-1.5 rounded-lg border border-[#E2E2E2] bg-[#F8F8FA] px-4 py-3 text-sm leading-relaxed text-[#25262E]">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Summary</p>
+            <p v-if="question.summary" class="mt-1.5 rounded-lg border border-[#E2E2E2] bg-[#F8F8FA] px-4 py-3 text-sm leading-relaxed text-[#25262E]">
               {{ question.summary }}
             </p>
             <p v-else class="mt-1.5 rounded-lg border border-dashed border-[#E2E2E2] px-4 py-3 text-sm text-[#9A9A9A]">
-              No summary yet.
+              No summary.
             </p>
           </div>
 
           <div>
-            <div class="flex items-center justify-between">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Code</p>
-              <button
-                v-if="editing !== 'sql'"
-                type="button"
-                class="flex h-7 w-7 items-center justify-center rounded-md text-[#9A9A9A] transition-colors hover:bg-[#F1F1F1] hover:text-[#3B1770]"
-                title="Edit code"
-                aria-label="Edit code"
-                @click="startEdit('sql')"
-              >
-                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                  <path d="M4 20h4L19 9l-4-4L4 16v4z" stroke-linejoin="round" />
-                  <path d="M13.5 6.5l4 4" />
-                </svg>
-              </button>
-            </div>
-            <template v-if="editing === 'sql'">
-              <textarea
-                v-model="draft"
-                data-edit="sql"
-                rows="10"
-                spellcheck="false"
-                aria-label="Code"
-                class="mt-1.5 w-full resize-y rounded-lg border border-[#3B1770] bg-white px-4 py-3 font-mono text-[13px] leading-relaxed text-[#25262E] outline-none"
-                @keydown.esc.prevent="cancelEdit"
-              ></textarea>
-              <div class="mt-2 flex gap-2">
-                <button type="button" class="rounded bg-[#3B1770] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#4B1E8C]" @click="saveEdit">Save</button>
-                <button type="button" class="rounded px-2 py-1 text-[12px] font-medium text-[#6B6B6B] hover:bg-[#F7F7F8]" @click="cancelEdit">Cancel</button>
-              </div>
-            </template>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9A9A9A]">Code</p>
             <pre
-              v-else
               class="mt-1.5 overflow-x-auto rounded-lg border border-[#E2E2E2] bg-[#F8F8FA] px-4 py-3 font-mono text-[13px] leading-relaxed text-[#3B1770]"
             >{{ question.sql }}</pre>
           </div>

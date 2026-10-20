@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
-import CertifiedQuestionForm from '~/components/workspace/CertifiedQuestionForm.vue';
+import { computed } from 'vue';
 import CertifiedQuestionItem from '~/components/workspace/CertifiedQuestionItem.vue';
 import { useCertifiedQuestions } from '~/composables/useCertifiedQuestions';
 
-/** The open source's certified questions, managed in its Certified Questions tab. */
+/**
+ * The open source's certified questions, managed in its Certified Questions tab.
+ * Questions are only added by certifying an agent answer; there's no create form here.
+ */
 const props = withDefaults(
   defineProps<{
     sourceId: string;
@@ -15,79 +17,45 @@ const props = withDefaults(
   { highlightId: null },
 );
 
-const CREATED_HIGHLIGHT_MS = 2400;
-
 const { questionsFor } = useCertifiedQuestions();
 
 const questions = computed(() => questionsFor(props.sourceId));
-
-const isCreating = ref(false);
-/** The question just added here, ringed like a host highlight. */
-const createdId = ref<string | null>(null);
-let createdTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearCreatedHighlight(): void {
-  if (createdTimer !== null) clearTimeout(createdTimer);
-  createdTimer = null;
-  createdId.value = null;
-}
-
-onBeforeUnmount(clearCreatedHighlight);
-
-function onCreated(questionId: string): void {
-  isCreating.value = false;
-  clearCreatedHighlight();
-  createdId.value = questionId;
-  createdTimer = setTimeout(() => {
-    createdTimer = null;
-    createdId.value = null;
-  }, CREATED_HIGHLIGHT_MS);
-}
-
-function isHighlighted(questionId: string): boolean {
-  return questionId === props.highlightId || questionId === createdId.value;
-}
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col bg-white">
-    <div class="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#E2E2E2] px-6 py-4">
-      <div class="min-w-0">
-        <h2 class="text-lg font-semibold text-[#25262E]">Certified questions</h2>
-        <p class="mt-0.5 truncate text-xs text-[#9A9A9A]">
-          Verified questions for {{ sourceName }}. Anyone asking one gets its saved query.
-        </p>
-      </div>
-      <button
-        type="button"
-        class="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md bg-[#3B1770] px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#4B1E8C] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#3B1770]"
-        :disabled="isCreating"
-        @click="isCreating = true"
-      >
-        <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" stroke-linecap="round" />
-        </svg>
-        Add question
-      </button>
+    <div class="flex-shrink-0 border-b border-[#E2E2E2] px-6 py-4">
+      <h2 class="text-lg font-semibold text-[#25262E]">Certified questions</h2>
+      <p class="mt-0.5 truncate text-xs text-[#9A9A9A]">
+        Verified questions for {{ sourceName }}. Anyone asking one gets its saved answer.
+      </p>
     </div>
 
     <div class="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#FAFAFB] px-6 py-5">
-      <CertifiedQuestionForm
-        v-if="isCreating"
-        :source-id="sourceId"
-        @created="onCreated"
-        @cancel="isCreating = false"
-      />
+      <!-- How questions get here and what stays locked, once there's a list to read it against -->
+      <p
+        v-if="questions.length"
+        class="flex items-start gap-2.5 rounded-lg border border-[#E4DAF5] bg-[#F8F6FC] px-4 py-3 text-xs leading-relaxed text-[#6B6B6B]"
+      >
+        <svg viewBox="0 0 24 24" class="mt-px h-4 w-4 flex-shrink-0 text-[#3B1770]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 8h.01" stroke-linecap="round" />
+        </svg>
+        <span>
+          Questions are added from the agent: select <span class="font-medium text-[#3B1770]">Certify</span> under an
+          answer. Here you can edit a question, its phrasings and notes. Its summary and code stay exactly as certified.
+        </span>
+      </p>
 
       <CertifiedQuestionItem
         v-for="question in questions"
         :key="question.id"
         :question="question"
-        :highlighted="isHighlighted(question.id)"
+        :highlighted="question.id === highlightId"
       />
 
       <div
-        v-if="!questions.length && !isCreating"
+        v-if="!questions.length"
         class="mx-auto mt-10 flex max-w-sm flex-col items-center text-center"
       >
         <span class="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1ECFA] text-[#3B1770]" aria-hidden="true">
@@ -98,7 +66,8 @@ function isHighlighted(questionId: string): boolean {
         </span>
         <p class="mt-3 text-sm font-semibold text-[#25262E]">No certified questions yet</p>
         <p class="mt-1 text-sm text-[#6B6B6B]">
-          Add one here, or select Certify under an agent answer about this source.
+          Ask the agent about {{ sourceName }}, then select
+          <span class="font-medium text-[#3B1770]">Certify</span> under its answer to add it here.
         </p>
       </div>
     </div>

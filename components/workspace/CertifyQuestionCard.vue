@@ -254,6 +254,18 @@ function onSave(): void {
         placeholder="Add context, rationale, or caveats…"
         class="mt-1.5 w-full resize-y rounded-xl border border-[#E2E2E2] bg-white px-3 py-2 text-sm text-[#25262E] outline-none placeholder:text-[#9A9A9A] focus:border-[#3B1770]"
       ></textarea>
+
+      <!-- Summary and code can't be edited after certifying, so say so before the author commits -->
+      <p v-if="!isUpdate && !questionEditable" class="mt-3 flex items-start gap-2 text-xs leading-relaxed text-[#6B6B6B]">
+        <svg viewBox="0 0 24 24" class="mt-px h-3.5 w-3.5 flex-shrink-0 text-[#8B6FC6]" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke-linecap="round" />
+        </svg>
+        <span>
+          This answer's summary and code are saved as they are and can't be edited later. If something's off,
+          refine the answer first.
+        </span>
+      </p>
     </div>
 
     <footer class="flex items-center justify-between gap-3 border-t border-[#E4DAF5] px-5 py-3">
