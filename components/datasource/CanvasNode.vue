@@ -18,13 +18,20 @@ import {
   resolvedTableSourceId,
   isJoinIncomplete,
   isJoinFieldBlank,
+  fieldEntities,
+  joinSideEntity,
+  outputListHeight,
   type CanvasNode,
   type FieldDef,
   type FieldOption,
+  type JoinSide,
   type JoinType,
+  type OutputFieldRow,
+  type ResizeAxis,
 } from '~/composables/useDataSourceCanvas';
 import JoinVennIcon from './JoinVennIcon.vue';
 import FieldSelect from './FieldSelect.vue';
+import ToggleSwitch from './ToggleSwitch.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -35,6 +42,8 @@ const props = withDefaults(
     leftFields?: FieldOption[];
     rightFields?: FieldOption[];
     activeFields?: string[];
+    /** Output card only: the fields it lists, each with its Visible state. */
+    outputFields?: OutputFieldRow[];
     inflowCount?: number;
     hasPerformanceFilter?: boolean;
     filteredFieldIds?: Record<string, string>;
@@ -55,6 +64,7 @@ const props = withDefaults(
     leftFields: () => [],
     rightFields: () => [],
     activeFields: () => [],
+    outputFields: () => [],
     inflowCount: 0,
     hasPerformanceFilter: false,
     filteredFieldIds: () => ({}),
@@ -68,7 +78,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'start-move', payload: { id: string; event: PointerEvent }): void;
   (e: 'start-connect', payload: { id: string; event: PointerEvent }): void;
-  (e: 'start-resize', payload: { id: string; event: PointerEvent }): void;
+  (e: 'start-resize', payload: { id: string; event: PointerEvent; axis?: ResizeAxis }): void;
   (e: 'remove', id: string): void;
   (e: 'rename', payload: { id: string; name: string }): void;
   (e: 'toggle-collapse', id: string): void;
@@ -78,6 +88,9 @@ const emit = defineEmits<{
   (e: 'add-condition', id: string): void;
   (e: 'update-condition', payload: { id: string; conditionId: string; side: 'leftField' | 'rightField'; value: string }): void;
   (e: 'remove-condition', payload: { id: string; conditionId: string }): void;
+  (e: 'set-dimension', payload: { id: string; side: JoinSide; enabled: boolean }): void;
+  (e: 'set-condition-entity', payload: { id: string; side: JoinSide; entity: string }): void;
+  (e: 'set-field-visibility', payload: { keys: string[]; visible: boolean }): void;
   (e: 'filter-shortcut', shortcut: CanvasFilterShortcut): void;
 }>();
 
@@ -214,15 +227,128 @@ function isFieldFiltered(field: FieldDef): boolean {
   return filteredFieldSet.value.has(field.name);
 }
 
+function isJoinKey(field: FieldDef): boolean {
+  return activeSet.value.has(field.name);
+}
+
+/*
+ * Colour code on the canvas. Header colour is the card type (table grey, Join
+ * lilac, Output black); these three states each have their own hue:
+ *   - purple / lilac row  = field used in a join
+ *   - teal                = global filter (field row, and the Output's funnel)
+ *   - blue                = performance filter on a table (header line + funnel)
+ * A field that is both a join key and filtered keeps the lilac row and still
+ * shows the teal funnel.
+ */
+function fieldRowClass(field: FieldDef): string {
+  if (isJoinKey(field)) return 'bg-[#F1ECFA]';
+  return isFieldFiltered(field) ? 'bg-[#EEF9F7]' : '';
+}
+
+function fieldDotClass(field: FieldDef): string {
+  if (isJoinKey(field)) return 'bg-[#3B1770]';
+  return isFieldFiltered(field) ? 'bg-[#009E8F]' : 'bg-[#C4C4C4]';
+}
+
+function fieldNameClass(field: FieldDef): string {
+  if (isJoinKey(field)) return 'font-medium text-[#3B1770]';
+  return isFieldFiltered(field) ? 'font-medium text-[#0B5F5A]' : 'text-[#5A5A5A]';
+}
+
+function fieldRowTitle(field: FieldDef): string | undefined {
+  const notes = [
+    isJoinKey(field) ? 'Used in a join' : '',
+    isFieldFiltered(field) ? 'Global filter applied' : '',
+  ].filter(Boolean);
+  return notes.length ? notes.join(' · ') : undefined;
+}
+
 function funnelButtonClass(active: boolean, hover: 'card' | 'field'): string {
   const hoverClass = hover === 'card'
     ? 'group-hover/card:opacity-100'
     : 'group-hover/field:opacity-100';
   if (active) {
-    return 'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-[#F1ECFA] text-[#3B1770] opacity-100';
+    // Field-level (global filter) is teal; the table header's performance filter is blue.
+    const tone = hover === 'field' ? 'bg-[#D3F0EC] text-[#0B5F5A]' : 'bg-[#D9ECFC] text-[#0A5CB0]';
+    return `flex h-5 w-5 flex-shrink-0 items-center justify-center rounded ${tone} opacity-100`;
   }
   return `flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[#3B1770] opacity-0 transition-opacity hover:bg-white ${hoverClass} focus-visible:opacity-100`;
 }
+
+/* ------------------------- join sides: entity + dimension ------------------------- */
+
+const dimensionMenuOpen = ref(false);
+const hasDimension = computed(() => !!(props.node.dimensionEntity?.left || props.node.dimensionEntity?.right));
+
+const sideFields = computed<Record<JoinSide, FieldOption[]>>(() => ({
+  left: props.leftFields,
+  right: props.rightFields,
+}));
+
+/** Entities reachable on each side: more than one means the side is a join result. */
+const sideEntities = computed<Record<JoinSide, string[]>>(() => ({
+  left: fieldEntities(props.leftFields),
+  right: fieldEntities(props.rightFields),
+}));
+
+const sideEntity = computed<Record<JoinSide, string>>(() => ({
+  left: joinSideEntity(props.node, 'left', props.leftFields),
+  right: joinSideEntity(props.node, 'right', props.rightFields),
+}));
+
+/** Condition dropdowns list one entity per side, since a side can't mix entities. */
+const sideOptions = computed<Record<JoinSide, FieldOption[]>>(() => {
+  const optionsFor = (side: JoinSide): FieldOption[] =>
+    sideEntities.value[side].length > 1
+      ? sideFields.value[side].filter((field) => field.entity === sideEntity.value[side])
+      : sideFields.value[side];
+  return { left: optionsFor('left'), right: optionsFor('right') };
+});
+
+const joinSides = computed(() =>
+  (['left', 'right'] as const).map((side) => {
+    const label = side === 'left' ? props.leftLabel : props.rightLabel;
+    return {
+      side,
+      title: side === 'left' ? 'Left' : 'Right',
+      color: side === 'left' ? '#3B6BB5' : '#8B5CF6',
+      label: label || 'not connected',
+      connected: !!label,
+      entities: sideEntities.value[side],
+      entity: sideEntity.value[side],
+      /** What the side is called in the dimension popover: the entity it matches on. */
+      name: sideEntities.value[side].length > 1 ? sideEntity.value[side] : (label || 'not connected'),
+      dimension: !!props.node.dimensionEntity?.[side],
+    };
+  }),
+);
+
+function onSelectSideEntity(side: JoinSide, event: Event): void {
+  emit('set-condition-entity', {
+    id: props.node.id,
+    side,
+    entity: (event.target as HTMLSelectElement).value,
+  });
+}
+
+/* ------------------------------ output fields ------------------------------ */
+
+const visibleOutputCount = computed(() => props.outputFields.filter((row) => row.visible).length);
+
+/** The field list is open, so its height can be dragged (collapsing keeps the chosen height). */
+const outputListOpen = computed(
+  () => isOutput.value && !props.node.collapsed && props.outputFields.length > 0,
+);
+const outputListStyle = computed(() => ({
+  maxHeight: `${outputListHeight(props.node, props.outputFields.length)}px`,
+}));
+
+/** Labels shared by several output fields get their entity appended to tell them apart. */
+const repeatedOutputLabels = computed(() => {
+  const counts = new Map<string, number>();
+  for (const row of props.outputFields) counts.set(row.label, (counts.get(row.label) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count > 1).map(([label]) => label));
+});
 
 function openPerformanceFilters(): void {
   emit(
@@ -269,11 +395,16 @@ function openOutputFilters(): void {
     @pointerdown="emit('start-move', { id: node.id, event: $event })"
   >
     <!-- ======================= TABLE ======================= -->
+    <!--
+      Header colour says what the card is, so a table never borrows the Join lilac.
+      A performance filter shows as a blue line along the top plus the blue funnel chip.
+    -->
     <template v-if="node.type === 'table'">
       <header
         class="flex h-9 items-center gap-1.5 rounded-t-lg border-b pl-2 pr-4"
         :class="[
-          hasPerformanceFilter ? 'border-[#E4D7F5] bg-[#F1ECFA]' : 'border-[#EEE] bg-[#F7F9FC]',
+          'border-[#EEE] bg-[#F7F9FC]',
+          { 'shadow-[inset_0_2px_0_0_#1E88E5]': hasPerformanceFilter },
           { 'rounded-b-lg border-b-0': node.collapsed && !collapsedVisibleFields.length },
         ]"
       >
@@ -340,24 +471,11 @@ function openOutputFilters(): void {
           v-for="field in node.fields"
           :key="field.name"
           class="group/field flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs"
-          :class="
-            activeSet.has(field.name) || isFieldFiltered(field)
-              ? 'bg-[#F1ECFA]'
-              : ''
-          "
+          :class="fieldRowClass(field)"
+          :title="fieldRowTitle(field)"
         >
-          <span
-            class="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-            :class="activeSet.has(field.name) || isFieldFiltered(field) ? 'bg-[#3B1770]' : 'bg-[#C4C4C4]'"
-          />
-          <span
-            class="min-w-0 flex-1 truncate"
-            :class="
-              activeSet.has(field.name) || isFieldFiltered(field)
-                ? 'font-medium text-[#3B1770]'
-                : 'text-[#5A5A5A]'
-            "
-          >{{ field.name }}</span>
+          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="fieldDotClass(field)" />
+          <span class="min-w-0 flex-1 truncate" :class="fieldNameClass(field)">{{ field.name }}</span>
           <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
             <button
               v-if="filterShortcuts"
@@ -378,15 +496,16 @@ function openOutputFilters(): void {
         </li>
       </ul>
 
-      <!-- Collapsed: show only fields used in joins -->
+      <!-- Collapsed: show only fields used in joins or carrying a global filter -->
       <ul v-else-if="collapsedVisibleFields.length" class="px-2 py-1.5">
         <li
           v-for="field in collapsedVisibleFields"
           :key="field.name"
           class="group/field flex min-w-0 items-center gap-1.5 px-1 py-0.5 text-xs"
+          :title="fieldRowTitle(field)"
         >
-          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#3B1770]" />
-          <span class="min-w-0 flex-1 truncate font-medium text-[#3B1770]">{{ field.name }}</span>
+          <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="fieldDotClass(field)" />
+          <span class="min-w-0 flex-1 truncate" :class="fieldNameClass(field)">{{ field.name }}</span>
           <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
             <button
               v-if="filterShortcuts"
@@ -496,26 +615,91 @@ function openOutputFilters(): void {
       </header>
 
       <!-- Left / Right inputs + swap -->
-      <div v-if="!node.collapsed" class="flex items-center justify-between gap-2 px-3 pt-1.5 text-xs">
+      <div v-if="!node.collapsed" class="relative flex items-center justify-between gap-1.5 px-3 pt-1.5 text-xs">
         <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-1.5 py-0.5">
-            <span class="font-semibold uppercase tracking-wide text-[#3B6BB5]">Left</span>
-            <span class="truncate text-[#5A5A5A]">{{ leftLabel || 'not connected' }}</span>
-          </div>
-          <div class="flex items-center gap-1.5 py-0.5">
-            <span class="font-semibold uppercase tracking-wide text-[#8B5CF6]">Right</span>
-            <span class="truncate text-[#5A5A5A]">{{ rightLabel || 'not connected' }}</span>
+          <div v-for="item in joinSides" :key="item.side" class="flex h-5 items-center gap-1.5">
+            <span class="flex-shrink-0 font-semibold uppercase tracking-wide" :style="{ color: item.color }">{{ item.title }}</span>
+            <!-- A join result spans several entities; conditions on this side use one of them. -->
+            <select
+              v-if="item.entities.length > 1"
+              :value="item.entity"
+              class="h-5 min-w-0 flex-1 cursor-pointer rounded border border-[#E2E2E2] bg-white px-0.5 text-xs text-[#25262E] outline-none focus:border-[#3B1770]"
+              :title="`${item.label}: match on fields from one entity`"
+              :aria-label="`${item.title} entity to match on`"
+              @pointerdown.stop
+              @click.stop
+              @change="onSelectSideEntity(item.side, $event)"
+            >
+              <option v-for="entity in item.entities" :key="entity" :value="entity">{{ entity }}</option>
+            </select>
+            <span v-else class="truncate text-[#5A5A5A]">{{ item.label }}</span>
+            <span
+              v-if="item.dimension"
+              class="flex-shrink-0 rounded bg-[#3B1770] px-1 text-[9px] font-semibold leading-[14px] tracking-wide text-white"
+              title="Dimension entity"
+            >DIM</span>
           </div>
         </div>
-        <button
-          type="button"
-          title="Swap Left / Right"
-          class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[#9A7BD0] hover:bg-[#EDE6FA] hover:text-[#3B1770]"
-          @pointerdown.stop
-          @click.stop="emit('swap-inputs', node.id)"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3m3 3l-3 3M17 17H6l3-3m-3 3l3 3" /></svg>
-        </button>
+        <div class="flex flex-shrink-0 items-center">
+          <button
+            type="button"
+            title="Swap Left / Right"
+            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[#9A7BD0] hover:bg-[#EDE6FA] hover:text-[#3B1770]"
+            @pointerdown.stop
+            @click.stop="emit('swap-inputs', node.id)"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3m3 3l-3 3M17 17H6l3-3m-3 3l3 3" /></svg>
+          </button>
+          <button
+            type="button"
+            title="Dimension entity"
+            aria-label="Dimension entity options"
+            :aria-expanded="dimensionMenuOpen"
+            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded hover:bg-[#EDE6FA] hover:text-[#3B1770]"
+            :class="hasDimension || dimensionMenuOpen ? 'bg-[#EDE6FA] text-[#3B1770]' : 'text-[#9A7BD0]'"
+            @pointerdown.stop
+            @click.stop="dimensionMenuOpen = !dimensionMenuOpen"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M6 4v5m0 4v7M12 4v10m0 4v2M18 4v2m0 4v10" />
+              <path d="M4 11h4M10 16h4M16 8h4" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Dimension entity popover -->
+        <template v-if="dimensionMenuOpen">
+          <div class="fixed inset-0 z-30" @pointerdown.stop @click.stop="dimensionMenuOpen = false" />
+          <div
+            class="absolute right-2 top-full z-40 mt-1 w-60 cursor-default rounded-md border border-[#E2E2E2] bg-white p-3 shadow-lg"
+            role="dialog"
+            aria-label="Dimension entity"
+            @pointerdown.stop
+            @click.stop
+          >
+            <p class="text-xs font-semibold text-[#25262E]">Dimension entity</p>
+            <div
+              v-for="item in joinSides"
+              :key="item.side"
+              class="mt-2 flex items-center justify-between gap-2"
+            >
+              <span class="flex min-w-0 items-center gap-1.5 text-xs">
+                <span class="flex-shrink-0 font-semibold uppercase tracking-wide" :style="{ color: item.color }">{{ item.title }}</span>
+                <span class="truncate text-[#25262E]">{{ item.name }}</span>
+              </span>
+              <ToggleSwitch
+                size="sm"
+                :model-value="item.dimension"
+                :disabled="!item.connected"
+                :label="`Treat ${item.name} as a dimension entity`"
+                @update:model-value="emit('set-dimension', { id: node.id, side: item.side, enabled: $event })"
+              />
+            </div>
+            <p class="mt-2.5 border-t border-[#EEE] pt-2 text-[11px] leading-snug text-[#667085]">
+              Lets queries drop this entity when it is an edge table (joined to only one other table) and none of its fields are referenced. Speeds up star schemas by skipping joins that aren't needed.
+            </p>
+          </div>
+        </template>
       </div>
 
       <!-- Conditions -->
@@ -536,7 +720,7 @@ function openOutputFilters(): void {
           <FieldSelect
             class="flex-1"
             :model-value="condition.leftField"
-            :options="leftFields"
+            :options="sideOptions.left"
             placeholder="Left field…"
             accent="#3B6BB5"
             :invalid="joinSaveError && isJoinFieldBlank(condition.leftField)"
@@ -546,7 +730,7 @@ function openOutputFilters(): void {
           <FieldSelect
             class="flex-1"
             :model-value="condition.rightField"
-            :options="rightFields"
+            :options="sideOptions.right"
             placeholder="Right field…"
             accent="#8B5CF6"
             :invalid="joinSaveError && isJoinFieldBlank(condition.rightField)"
@@ -589,9 +773,20 @@ function openOutputFilters(): void {
     <!-- ======================= OUTPUT ======================= -->
     <template v-else>
       <header
-        class="flex h-9 items-center gap-2 rounded-t-lg bg-[#25262E] px-2.5 text-white"
+        class="flex h-9 items-center gap-1.5 rounded-t-lg bg-[#25262E] pl-2 pr-2.5 text-white"
       >
-        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+        <button
+          v-if="outputFields.length"
+          type="button"
+          class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-white/70 hover:bg-white/10 hover:text-white"
+          :title="node.collapsed ? 'Show output fields' : 'Hide output fields'"
+          :aria-expanded="!node.collapsed"
+          @pointerdown.stop
+          @click.stop="emit('toggle-collapse', node.id)"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 transition-transform" :class="{ '-rotate-90': node.collapsed }" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <svg viewBox="0 0 24 24" class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" />
         </svg>
         <span class="flex-1 text-sm font-semibold">Output</span>
@@ -601,7 +796,7 @@ function openOutputFilters(): void {
           class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded"
           :class="
             hasOutputFilter
-              ? 'bg-white/15 text-white opacity-100'
+              ? 'bg-[#D3F0EC] text-[#0B5F5A] opacity-100'
               : 'text-white/80 opacity-0 transition-opacity hover:bg-white/10 group-hover/card:opacity-100 focus-visible:opacity-100'
           "
           :title="hasOutputFilter ? 'Global filters applied to this output' : 'Global filters'"
@@ -619,7 +814,8 @@ function openOutputFilters(): void {
         <div class="min-w-0">
           <p>Final dataset</p>
           <p class="mt-0.5 text-[#9A9A9A]">
-            {{ inflowCount > 0 ? `${inflowCount} columns` : 'Connect a join or table here' }}
+            <template v-if="outputFields.length">{{ visibleOutputCount }} of {{ outputFields.length }} fields visible</template>
+            <template v-else>{{ inflowCount > 0 ? `${inflowCount} columns` : 'Connect a join or table here' }}</template>
           </p>
         </div>
         <button
@@ -632,6 +828,41 @@ function openOutputFilters(): void {
           <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
         </button>
       </div>
+
+      <!-- Output fields, each with its Visible switch -->
+      <ul
+        v-if="outputListOpen"
+        class="overflow-x-hidden overflow-y-auto border-t border-[#EEE] px-2 py-1.5"
+        :style="outputListStyle"
+      >
+        <li
+          v-for="row in outputFields"
+          :key="row.key"
+          class="flex h-5 min-w-0 items-center gap-1.5 px-1 text-xs"
+          :title="`${row.dataEntityLabel} · ${row.name}`"
+        >
+          <span
+            class="flex h-5 w-[26px] flex-shrink-0 items-center justify-center"
+            @pointerdown.stop
+            @click.stop
+          >
+            <ToggleSwitch
+              size="sm"
+              class="scale-[0.7]"
+              :model-value="row.visible"
+              :label="`Show ${row.label} in the output`"
+              @update:model-value="emit('set-field-visibility', { keys: [row.key], visible: $event })"
+            />
+          </span>
+          <span
+            class="min-w-0 flex-1 truncate"
+            :class="row.visible ? 'text-[#25262E]' : 'text-[#9A9A9A] line-through'"
+          >
+            {{ row.label }}<span v-if="repeatedOutputLabels.has(row.label)" class="text-[#9A9A9A]"> · {{ row.dataEntityLabel }}</span>
+          </span>
+          <span class="w-14 flex-shrink-0 text-right text-[10px] text-[#9A9A9A]">{{ row.type }}</span>
+        </li>
+      </ul>
     </template>
 
     <!-- "Updated" highlight: glow + tint over the card, and a chip naming the change -->
@@ -659,6 +890,26 @@ function openOutputFilters(): void {
       title="Drag to resize width"
       @pointerdown.stop="emit('start-resize', { id: node.id, event: $event })"
     />
+
+    <!-- Output: drag the bottom edge to show more or fewer fields, or the corner for both -->
+    <template v-if="outputListOpen">
+      <span
+        class="absolute bottom-0 left-0 flex h-2 w-full cursor-ns-resize items-center justify-center"
+        title="Drag to resize height"
+        @pointerdown.stop="emit('start-resize', { id: node.id, event: $event, axis: 'y' })"
+      >
+        <span class="h-0.5 w-6 rounded-full bg-[#D0D0D0] transition-colors group-hover/card:bg-[#9A7BD0]" />
+      </span>
+      <span
+        class="absolute bottom-0 right-0 flex h-3 w-3 cursor-nwse-resize items-end justify-end"
+        title="Drag to resize"
+        @pointerdown.stop="emit('start-resize', { id: node.id, event: $event, axis: 'both' })"
+      >
+        <svg viewBox="0 0 12 12" class="h-3 w-3 text-[#B8B8B8] transition-colors group-hover/card:text-[#9A7BD0]" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true">
+          <path d="M10.5 5.5 5.5 10.5M10.5 8.5 8.5 10.5" />
+        </svg>
+      </span>
+    </template>
 
     <!-- Remove (not for output) -->
     <button

@@ -59,9 +59,15 @@ export interface FilterValueMapping {
   labelField: string;
 }
 
-export interface FilterValueConfiguration {
-  provider: FilterValueProvider | null;
+/** One prepared source and the data-source fields it supplies values for. */
+export interface FilterValueSource {
+  provider: FilterValueProvider;
   mappings: FilterValueMapping[];
+}
+
+/** Each field can take its values from a different source, so there can be several. */
+export interface FilterValueConfiguration {
+  sources: FilterValueSource[];
 }
 
 export interface SourcePreview {
@@ -78,10 +84,19 @@ export interface ApiEndpointExample {
 }
 
 export function defaultFilterValueConfiguration(): FilterValueConfiguration {
-  return {
-    provider: null,
-    mappings: [],
-  };
+  return { sources: [] };
+}
+
+/** Data-source fields already mapped by sources other than `exceptProviderId`. */
+export function mappedTargetFields(
+  sources: readonly FilterValueSource[],
+  exceptProviderId = '',
+): Set<string> {
+  return new Set(
+    sources
+      .filter((source) => source.provider.id !== exceptProviderId)
+      .flatMap((source) => source.mappings.map((mapping) => mapping.targetField)),
+  );
 }
 
 export function defaultFilterValueFileOptions(): FilterValueFileOptions {
@@ -379,13 +394,24 @@ function parseMappings(value: unknown): FilterValueMapping[] {
   });
 }
 
+function parseSource(value: unknown): FilterValueSource | null {
+  if (!value || typeof value !== 'object') return null;
+  const source = value as Partial<FilterValueSource>;
+  const provider = parseProvider(source.provider);
+  return provider ? { provider, mappings: parseMappings(source.mappings) } : null;
+}
+
 export function parseFilterValueConfiguration(raw: string | null): FilterValueConfiguration {
   if (!raw) return defaultFilterValueConfiguration();
   try {
-    const parsed = JSON.parse(raw) as Partial<FilterValueConfiguration>;
+    const parsed = JSON.parse(raw) as { sources?: unknown };
+    // Saves from before multi-source hold one provider + mappings at the top level.
+    const candidates: unknown[] = Array.isArray(parsed.sources) ? parsed.sources : [parsed];
     return {
-      provider: parseProvider(parsed.provider),
-      mappings: parseMappings(parsed.mappings),
+      sources: candidates.flatMap((candidate) => {
+        const source = parseSource(candidate);
+        return source ? [source] : [];
+      }),
     };
   } catch {
     return defaultFilterValueConfiguration();
@@ -412,15 +438,41 @@ export function useFilterValueConfiguration() {
     );
   }
 
-  function save(provider: FilterValueProvider, mappings: FilterValueMapping[]): void {
-    configuration.value = {
+  /**
+   * Adds a source, or replaces the one identified by `replacesId` (its own id
+   * by default). A provider is listed once, so a duplicate entry is dropped.
+   */
+  function saveSource(
+    provider: FilterValueProvider,
+    mappings: FilterValueMapping[],
+    replacesId: string = provider.id,
+  ): void {
+    const next: FilterValueSource = {
       provider,
       mappings: mappings.map((mapping) => ({ ...mapping })),
+    };
+    const sources = configuration.value.sources;
+    const index = sources.findIndex((source) => source.provider.id === replacesId);
+    const merged = index >= 0
+      ? sources.map((source, position) => (position === index ? next : source))
+      : [...sources, next];
+    configuration.value = {
+      sources: merged.filter((source) => source === next || source.provider.id !== provider.id),
     };
   }
 
   function updateProvider(provider: FilterValueProvider): void {
-    configuration.value = { ...configuration.value, provider };
+    configuration.value = {
+      sources: configuration.value.sources.map((source) =>
+        source.provider.id === provider.id ? { ...source, provider } : source,
+      ),
+    };
+  }
+
+  function removeSource(providerId: string): void {
+    configuration.value = {
+      sources: configuration.value.sources.filter((source) => source.provider.id !== providerId),
+    };
   }
 
   function clear(): void {
@@ -432,8 +484,9 @@ export function useFilterValueConfiguration() {
   return {
     configuration,
     load,
-    save,
+    saveSource,
     updateProvider,
+    removeSource,
     clear,
   };
 }

@@ -14,6 +14,7 @@ import OutputExpressionEditorModal, {
 } from './OutputExpressionEditorModal.vue';
 import HierarchyFieldModal from './HierarchyFieldModal.vue';
 import BulkFieldCapabilitiesModal from './BulkFieldCapabilitiesModal.vue';
+import ToggleSwitch from './ToggleSwitch.vue';
 
 const props = defineProps<{
   node: CanvasNode;
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   'update-custom-metric': [payload: { id: string; name: string; expression: string }];
   'remove-custom-metric': [id: string];
   'set-field-label': [payload: { key: string; label: string }];
+  'set-field-visibility': [payload: { keys: string[]; visible: boolean }];
   'set-bulk-field-capabilities': [patch: Record<string, FieldCapabilities>];
   'set-translation-file': [file: OutputTranslationFile];
 }>();
@@ -64,6 +66,14 @@ const visibleMetricRows = computed(() => {
   if (!needle) return customMetricRows.value;
   return customMetricRows.value.filter((row) => row.name.toLowerCase().includes(needle));
 });
+
+const visibleFieldCount = computed(() => fieldRows.value.filter((row) => row.visible).length);
+
+/** Show all / Hide all act on the rows currently listed, so a search narrows them. */
+function setListedVisibility(visible: boolean): void {
+  const keys = visibleFieldRows.value.filter((row) => row.visible !== visible).map((row) => row.key);
+  if (keys.length) emit('set-field-visibility', { keys, visible });
+}
 
 function toggleExpanded(key: string): void {
   expandedKey.value = expandedKey.value === key ? null : key;
@@ -218,10 +228,31 @@ function onTranslationFileChange(event: Event): void {
           </label>
 
           <template v-if="activeTab === 'fields'">
+            <div v-if="fieldRows.length > 0" class="flex items-center justify-between gap-2 text-[11px]">
+              <span class="text-[#667085]">{{ visibleFieldCount }} of {{ fieldRows.length }} visible</span>
+              <span class="flex items-center gap-2">
+                <button type="button" class="font-medium text-[#3B1770] hover:underline" @click="setListedVisibility(true)">Show all</button>
+                <button type="button" class="font-medium text-[#3B1770] hover:underline" @click="setListedVisibility(false)">Hide all</button>
+              </span>
+            </div>
+            <div
+              v-if="visibleFieldRows.length > 0"
+              class="flex items-center gap-3 px-2.5 text-[9px] font-semibold uppercase text-[#9A9A9A]"
+            >
+              <span class="w-9 flex-shrink-0">Visible</span>
+              <span>Label</span>
+            </div>
             <ul class="max-h-72 overflow-auto rounded-md border border-[#E2E2E2]">
               <li v-for="row in visibleFieldRows" :key="row.key" class="border-b border-[#F0F0F0] last:border-b-0">
                 <div class="flex items-start gap-2 px-2.5 py-2">
-                  <div class="min-w-0 flex-1">
+                  <ToggleSwitch
+                    size="sm"
+                    class="mt-0.5"
+                    :model-value="row.visible"
+                    :label="`Show ${row.label} in the output`"
+                    @update:model-value="emit('set-field-visibility', { keys: [row.key], visible: $event })"
+                  />
+                  <div class="min-w-0 flex-1" :class="{ 'opacity-50': !row.visible }">
                     <span class="flex items-center gap-1.5">
                       <span class="truncate text-sm font-medium text-[#25262E]">{{ row.label }}</span>
                       <span
@@ -231,7 +262,7 @@ function onTranslationFileChange(event: Event): void {
                         {{ row.origin === 'derived' ? 'Derived' : 'Native' }}
                       </span>
                     </span>
-                    <span class="block text-[11px] text-[#9A9A9A]">{{ row.type }}</span>
+                    <span class="block truncate text-[11px] text-[#9A9A9A]">{{ row.type }}<template v-if="row.origin === 'native'"> · {{ row.dataEntityLabel }}</template></span>
                   </div>
                   <button
                     type="button"

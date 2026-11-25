@@ -42,6 +42,7 @@
         @update-custom-metric="({ id, name, expression }) => canvasRef?.updateCustomMetric(id, name, expression)"
         @remove-custom-metric="(id) => canvasRef?.removeCustomMetric(id)"
         @set-field-label="({ key, label }) => canvasRef?.setFieldLabel(key, label)"
+        @set-field-visibility="({ keys, visible }) => canvasRef?.setFieldVisibility(keys, visible)"
         @set-bulk-field-capabilities="(patch) => canvasRef?.setBulkFieldCapabilities(patch)"
         @set-translation-file="(file) => canvasRef?.setOutputTranslationFile(file)"
       />
@@ -126,6 +127,7 @@ const canvasRef = ref<{
   updateCustomMetric: (id: string, name: string, expression: string) => void;
   removeCustomMetric: (id: string) => void;
   setFieldLabel: (key: string, label: string) => void;
+  setFieldVisibility: (keys: string[], visible: boolean) => void;
   setBulkFieldCapabilities: (patch: Record<string, FieldCapabilities>) => void;
   setOutputTranslationFile: (file: OutputTranslationFile | undefined) => void;
 } | null>(null);

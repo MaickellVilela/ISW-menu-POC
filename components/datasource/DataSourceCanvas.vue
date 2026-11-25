@@ -6,6 +6,10 @@ import {
   inputAnchor,
   collectSourceFields,
   usedFieldValues,
+  outputCardFields,
+  outputListHeight,
+  type OutputFieldRow,
+  type ResizeAxis,
   canvasTableIdentities,
   parseSourceDragPayload,
   findSuggestedOutputSource,
@@ -88,6 +92,7 @@ const {
   setNodeName,
   replaceTable,
   setNodeWidth,
+  setOutputListHeight,
   removeNode,
   addDerivedField,
   updateDerivedField,
@@ -98,6 +103,9 @@ const {
   updateCustomMetric,
   removeCustomMetric,
   setFieldLabel,
+  setFieldVisibility,
+  setJoinDimension,
+  setConditionEntity,
   setBulkFieldCapabilities,
   setOutputTranslationFile,
   clear,
@@ -171,7 +179,7 @@ watch(
 function hasPerformanceFilter(node: CanvasNodeModel): boolean {
   return tableHasPerformanceFilter(
     resolvedTableSourceId(node),
-    filterMarks.value.performanceProviderId,
+    filterMarks.value.performanceProviderIds,
   );
 }
 
@@ -262,7 +270,16 @@ function onTidy(): void {
 type Interaction =
   | { mode: 'move'; id: string; offsetX: number; offsetY: number }
   | { mode: 'connect'; fromId: string }
-  | { mode: 'resize'; id: string; startX: number; startWidth: number };
+  | {
+      mode: 'resize';
+      id: string;
+      /** Width only (every card), or the Output's field-list height as well. */
+      axis: ResizeAxis;
+      startX: number;
+      startY: number;
+      startWidth: number;
+      startHeight: number;
+    };
 
 const interaction = ref<Interaction | null>(null);
 const pointer = ref<Point>({ x: 0, y: 0 });
@@ -321,6 +338,19 @@ function activeFieldsFor(node: CanvasNodeModel): string[] {
     .map((field) => field.name);
 }
 
+const NO_OUTPUT_FIELDS: OutputFieldRow[] = [];
+
+/** Fields the Output card lists with their Visible switch (empty for every other card). */
+function outputFieldsFor(node: CanvasNodeModel): OutputFieldRow[] {
+  return node.type === 'output' ? outputCardFields(nodes.value, node) : NO_OUTPUT_FIELDS;
+}
+
+/** Rows a card lists beyond its header, as `nodeSize` expects them. */
+function listedRowCount(node: CanvasNodeModel): number {
+  if (node.type === 'output') return outputFieldsFor(node).length;
+  return node.type === 'table' && node.collapsed ? activeFieldsFor(node).length : 0;
+}
+
 /* ------------------------------- zoom ------------------------------------ */
 
 function clampZoom(value: number): number {
@@ -361,9 +391,7 @@ function contentBounds(): { minX: number; minY: number; maxX: number; maxY: numb
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const node of nodes.value) {
-    const activeCount =
-      node.type === 'table' && node.collapsed ? activeFieldsFor(node).length : 0;
-    const size = nodeSize(node, activeCount);
+    const size = nodeSize(node, listedRowCount(node));
     minX = Math.min(minX, node.x);
     minY = Math.min(minY, node.y);
     maxX = Math.max(maxX, node.x + size.width);
@@ -498,11 +526,21 @@ function onStartConnect({ id, event }: { id: string; event: PointerEvent }): voi
   attachWindowListeners();
 }
 
-function onStartResize({ id, event }: { id: string; event: PointerEvent }): void {
+function onStartResize(
+  { id, event, axis = 'x' }: { id: string; event: PointerEvent; axis?: ResizeAxis },
+): void {
   const node = findNode(id);
   if (!node) return;
-  const { x } = toSurfaceCoords(event);
-  interaction.value = { mode: 'resize', id, startX: x, startWidth: nodeWidth(node) };
+  const { x, y } = toSurfaceCoords(event);
+  interaction.value = {
+    mode: 'resize',
+    id,
+    axis,
+    startX: x,
+    startY: y,
+    startWidth: nodeWidth(node),
+    startHeight: outputListHeight(node, listedRowCount(node)),
+  };
   attachWindowListeners();
 }
 
@@ -517,7 +555,9 @@ function onPointerMove(event: PointerEvent): void {
       pointer.value.y - interaction.value.offsetY,
     );
   } else if (interaction.value.mode === 'resize') {
-    setNodeWidth(interaction.value.id, interaction.value.startWidth + (pointer.value.x - interaction.value.startX));
+    const { id, axis, startX, startY, startWidth, startHeight } = interaction.value;
+    if (axis !== 'y') setNodeWidth(id, startWidth + (pointer.value.x - startX));
+    if (axis !== 'x') setOutputListHeight(id, startHeight + (pointer.value.y - startY));
   } else if (interaction.value.mode === 'connect') {
     const targetId = nodeIdAtPoint(event.clientX, event.clientY);
     connectTargetId.value = targetId && targetId !== interaction.value.fromId ? targetId : null;
@@ -698,6 +738,7 @@ defineExpose({
   updateCustomMetric,
   removeCustomMetric,
   setFieldLabel,
+  setFieldVisibility,
   setBulkFieldCapabilities,
   setOutputTranslationFile,
 });
@@ -914,6 +955,7 @@ defineExpose({
           :left-fields="fieldsFor(node.inputs?.[0])"
           :right-fields="fieldsFor(node.inputs?.[1])"
           :active-fields="activeFieldsFor(node)"
+          :output-fields="outputFieldsFor(node)"
           :inflow-count="node.type === 'output' ? fieldsFor(node.inputs?.[0]).length : 0"
           :has-performance-filter="hasPerformanceFilter(node)"
           :filtered-field-ids="filteredFieldIds(node)"
@@ -935,6 +977,9 @@ defineExpose({
           @add-condition="addCondition"
           @update-condition="updateCondition($event.id, $event.conditionId, $event.side, $event.value)"
           @remove-condition="removeCondition($event.id, $event.conditionId)"
+          @set-dimension="setJoinDimension($event.id, $event.side, $event.enabled)"
+          @set-condition-entity="setConditionEntity($event.id, $event.side, $event.entity)"
+          @set-field-visibility="setFieldVisibility($event.keys, $event.visible)"
           @filter-shortcut="emit('open-filter-shortcut', $event)"
         />
       </div>

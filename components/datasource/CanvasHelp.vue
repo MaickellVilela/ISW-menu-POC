@@ -35,5 +35,29 @@ import JoinVennIcon from './JoinVennIcon.vue';
       <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">3.</span> Pick the join type and matching fields right on the card.</li>
       <li class="flex gap-2"><span class="font-semibold text-[#3B1770]">4.</span> Connect the final join to <span class="font-medium text-[#25262E]">Output</span>.</li>
     </ol>
+
+    <!-- What the field highlights on a table card mean -->
+    <div class="mx-auto mt-4 max-w-xs space-y-1.5 border-t border-[#EEE] pt-3 text-left text-xs text-[#6B6B6B]">
+      <p class="flex items-center gap-2">
+        <span class="flex h-5 w-16 flex-shrink-0 items-center gap-1 rounded bg-[#F1ECFA] px-1 text-[10px] font-medium text-[#3B1770]">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#3B1770]" />field
+        </span>
+        Used in a join
+      </p>
+      <p class="flex items-center gap-2">
+        <span class="flex h-5 w-16 flex-shrink-0 items-center gap-1 rounded bg-[#EEF9F7] px-1 text-[10px] font-medium text-[#0B5F5A]">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#009E8F]" />field
+          <svg viewBox="0 0 24 24" class="ml-auto h-3 w-3 rounded bg-[#D3F0EC]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" /></svg>
+        </span>
+        Has a global filter
+      </p>
+      <p class="flex items-center gap-2">
+        <span class="flex h-5 w-16 flex-shrink-0 items-center gap-1 rounded border border-[#EEE] bg-[#F7F9FC] px-1 text-[10px] font-semibold text-[#25262E] shadow-[inset_0_2px_0_0_#1E88E5]">
+          table
+          <svg viewBox="0 0 24 24" class="ml-auto h-3 w-3 rounded bg-[#D9ECFC] text-[#0A5CB0]" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" stroke-linejoin="round" /></svg>
+        </span>
+        Table has a performance filter
+      </p>
+    </div>
   </div>
 </template>

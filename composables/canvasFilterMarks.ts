@@ -12,20 +12,21 @@ import {
 import type { FieldDef } from './useDataSourceCanvas';
 
 export interface CanvasFilterMarkSnapshot {
-  performanceProviderId: string;
+  /** Every source that supplies performance-filter values. */
+  performanceProviderIds: string[];
   globalFilters: GlobalFilter[];
 }
 
 export function emptyCanvasFilterMarks(): CanvasFilterMarkSnapshot {
-  return { performanceProviderId: '', globalFilters: [] };
+  return { performanceProviderIds: [], globalFilters: [] };
 }
 
-export function performanceProviderId(config: FilterValueConfiguration): string {
-  return config.provider?.id ?? '';
+export function performanceProviderIds(config: FilterValueConfiguration): string[] {
+  return config.sources.map((source) => source.provider.id);
 }
 
-export function tableHasPerformanceFilter(sourceId: string, providerId: string): boolean {
-  return Boolean(sourceId && providerId && sourceId === providerId);
+export function tableHasPerformanceFilter(sourceId: string, providerIds: readonly string[]): boolean {
+  return Boolean(sourceId) && providerIds.includes(sourceId);
 }
 
 export function globalFilterForField(
@@ -64,7 +65,7 @@ export function readCanvasFilterMarks(): CanvasFilterMarkSnapshot {
     window.localStorage.getItem(GLOBAL_SETTINGS_STORAGE_KEY),
   );
   return {
-    performanceProviderId: performanceProviderId(configuration),
+    performanceProviderIds: performanceProviderIds(configuration),
     globalFilters: settings.filters,
   };
 }

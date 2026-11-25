@@ -75,6 +75,21 @@ export interface CanvasNode {
   fieldLabelOverrides?: Record<string, string>;
   /** Output node only: the simulated translation file currently attached, if any. */
   translationFile?: OutputTranslationFile;
+  /** Output node only: field row keys (see `outputFieldRows`) switched off in the Visible column. */
+  hiddenFieldKeys?: string[];
+  /** Output node only: height in px the card's field list may grow to. Unset means the default. */
+  listHeight?: number;
+  /** Join nodes only: sides flagged as a dimension entity (droppable from queries that don't reference it). */
+  dimensionEntity?: JoinSideFlags;
+  /** Join nodes only: the single entity a side's conditions match on, when that side is a join result. */
+  conditionEntity?: { left?: string; right?: string };
+}
+
+export type JoinSide = 'left' | 'right';
+
+export interface JoinSideFlags {
+  left?: boolean;
+  right?: boolean;
 }
 
 /** A user-defined computed field on the Output (e.g. "Full Name" = CONCAT(first_name, last_name)). */
@@ -135,6 +150,8 @@ export interface OutputFieldRow {
   /** Present only for a `'derived'` row, which can be edited/removed. */
   removeId?: string;
   capabilities: FieldCapabilities;
+  /** False when the field is switched off in the Visible column. */
+  visible: boolean;
 }
 
 /** A row in the Output's separate Custom Metrics list. */
@@ -372,6 +389,31 @@ const JOIN_CONDITIONS_CHROME = 56;
 const JOIN_INCOMPLETE_BANNER_HEIGHT = 28;
 const CONDITION_ROW_HEIGHT = 34;
 const OUTPUT_BODY_HEIGHT = 48;
+/** The Output's field list sits under a 1px divider. */
+const OUTPUT_LIST_BORDER = 1;
+/** The Output's field list can be dragged between three rows and this height. */
+const OUTPUT_LIST_MIN_HEIGHT = 3 * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING + OUTPUT_LIST_BORDER;
+const OUTPUT_LIST_MAX_HEIGHT = 640;
+
+export type ResizeAxis = 'x' | 'y' | 'both';
+
+/** Height the Output's field list needs to show every row without scrolling. */
+function outputListContentHeight(rowCount: number): number {
+  return rowCount * FIELD_ROW_HEIGHT + FIELD_LIST_PADDING + OUTPUT_LIST_BORDER;
+}
+
+/** Rendered height of the Output card's field list: its content, capped by the card's setting. */
+export function outputListHeight(node: CanvasNode, rowCount: number): number {
+  if (rowCount <= 0) return 0;
+  return Math.min(outputListContentHeight(rowCount), node.listHeight ?? FIELD_LIST_MAX_HEIGHT);
+}
+
+/** Keeps a dragged list height between three rows and the full list (or the hard cap). */
+export function clampOutputListHeight(height: number, rowCount: number): number {
+  const max = Math.min(outputListContentHeight(rowCount), OUTPUT_LIST_MAX_HEIGHT);
+  const min = Math.min(OUTPUT_LIST_MIN_HEIGHT, max);
+  return Math.round(Math.min(max, Math.max(min, height)));
+}
 
 export interface NodeSize {
   width: number;
@@ -383,13 +425,15 @@ export interface NodeSize {
  *
  * `activeFieldCount` covers the collapsed-table case that surfaces only the
  * fields referenced by joins; it defaults to 0 for callers that only have the
- * node (e.g. layout math that treats collapsed tables as header-only).
+ * node (e.g. layout math that treats collapsed tables as header-only). For the
+ * Output it is the number of fields listed on the card.
  */
 export function nodeSize(node: CanvasNode, activeFieldCount = 0): NodeSize {
   const width = nodeWidth(node);
 
   if (node.type === 'output') {
-    return { width, height: HEADER_HEIGHT + OUTPUT_BODY_HEIGHT };
+    const listHeight = node.collapsed ? 0 : outputListHeight(node, activeFieldCount);
+    return { width, height: HEADER_HEIGHT + OUTPUT_BODY_HEIGHT + listHeight };
   }
 
   if (node.type === 'table') {
@@ -648,6 +692,7 @@ export function outputFieldCandidates(nodes: CanvasNode[], output: CanvasNode): 
 export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): OutputFieldRow[] {
   const capabilities = output.fieldCapabilities ?? {};
   const labelOverrides = output.fieldLabelOverrides ?? {};
+  const hidden = new Set(output.hiddenFieldKeys ?? []);
 
   const native: OutputFieldRow[] = fieldsFromCanvasNodes(nodes).map((field) => ({
     key: field.value,
@@ -657,6 +702,7 @@ export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): Output
     type: field.type,
     origin: 'native',
     capabilities: capabilities[field.value] ?? defaultFieldCapabilities(field.type),
+    visible: !hidden.has(field.value),
   }));
 
   const derived: OutputFieldRow[] = (output.derivedFields ?? []).map((def) => {
@@ -671,10 +717,44 @@ export function outputFieldRows(nodes: CanvasNode[], output: CanvasNode): Output
       expression: def.expression,
       removeId: def.id,
       capabilities: capabilities[key] ?? defaultFieldCapabilities('Attribute'),
+      visible: !hidden.has(key),
     };
   });
 
   return [...native, ...derived];
+}
+
+/** Fields listed on the Output card: nothing until a table or join is wired into it. */
+export function outputCardFields(nodes: CanvasNode[], output: CanvasNode): OutputFieldRow[] {
+  return output.inputs?.[0] ? outputFieldRows(nodes, output) : [];
+}
+
+/** The Output's native fields minus the ones switched off in the Visible column. */
+export function visibleOutputFields(nodes: CanvasNode[]): FieldOption[] {
+  const hidden = new Set(nodes.find(isOutputNode)?.hiddenFieldKeys ?? []);
+  return fieldsFromCanvasNodes(nodes).filter((field) => !hidden.has(field.value));
+}
+
+/** Distinct source entities among a join side's fields, in first-seen order. */
+export function fieldEntities(fields: readonly FieldOption[]): string[] {
+  return [...new Set(fields.map((field) => field.entity))];
+}
+
+/**
+ * The entity a join side's conditions match on. A side fed by a join result
+ * spans several entities, but every condition must use the same one: the
+ * explicit choice, else the entity already used by a condition, else the first.
+ */
+export function joinSideEntity(node: CanvasNode, side: JoinSide, fields: readonly FieldOption[]): string {
+  const entities = fieldEntities(fields);
+  const chosen = node.conditionEntity?.[side];
+  if (chosen && entities.includes(chosen)) return chosen;
+  const key = side === 'left' ? 'leftField' : 'rightField';
+  for (const condition of node.conditions ?? []) {
+    const used = fields.find((field) => field.value === condition[key]);
+    if (used) return used.entity;
+  }
+  return entities[0] ?? '';
 }
 
 /** Resolves the Output's separate Custom Metrics list. */
@@ -712,7 +792,7 @@ export function outputPreviewForNode(nodes: CanvasNode[], nodeId?: string, limit
   if (nodeId) {
     const node = nodes.find((item) => item.id === nodeId);
     const fields = node?.type === 'output'
-      ? fieldsFromCanvasNodes(nodes)
+      ? visibleOutputFields(nodes)
       : collectSourceFields(nodes, nodeId);
     const label = node?.type === 'output'
       ? 'Output'
@@ -724,7 +804,7 @@ export function outputPreviewForNode(nodes: CanvasNode[], nodeId?: string, limit
     ? nodes.find((item) => item.id === output.inputs?.[0])
     : undefined;
   const label = source ? (source.customName?.trim() || source.label) : 'Canvas tables';
-  return previewFields(fieldsFromCanvasNodes(nodes), `Output · ${label}`, limit);
+  return previewFields(visibleOutputFields(nodes), `Output · ${label}`, limit);
 }
 
 export function csvCell(value: string): string {
@@ -1141,6 +1221,34 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
       for (const condition of node.conditions ?? []) {
         [condition.leftField, condition.rightField] = [condition.rightField, condition.leftField];
       }
+      // Per-side settings travel with the entity, not with the slot.
+      if (node.dimensionEntity) {
+        node.dimensionEntity = { left: node.dimensionEntity.right, right: node.dimensionEntity.left };
+      }
+      if (node.conditionEntity) {
+        node.conditionEntity = { left: node.conditionEntity.right, right: node.conditionEntity.left };
+      }
+    }
+  }
+
+  /** Flags one side of a join as a dimension entity (or clears the flag). */
+  function setJoinDimension(id: string, side: JoinSide, enabled: boolean): void {
+    const node = findNode(id);
+    if (node?.type !== 'join') return;
+    node.dimensionEntity = { ...(node.dimensionEntity ?? {}), [side]: enabled };
+  }
+
+  /**
+   * Picks the entity one side of a join matches on, clearing any condition
+   * field on that side that belongs to a different entity.
+   */
+  function setConditionEntity(id: string, side: JoinSide, entity: string): void {
+    const node = findNode(id);
+    if (node?.type !== 'join') return;
+    node.conditionEntity = { ...(node.conditionEntity ?? {}), [side]: entity };
+    const key = side === 'left' ? 'leftField' : 'rightField';
+    for (const condition of node.conditions ?? []) {
+      if (condition[key] && !condition[key].startsWith(`${entity}.`)) condition[key] = '';
     }
   }
 
@@ -1186,7 +1294,14 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
     if (node) node.width = clampNodeWidth(width);
   }
 
-  /** Collapses or expands every collapsible card at once (Output has no compact form). */
+  /** Sets how tall the Output card's field list may grow, clamped to what the list can use. */
+  function setOutputListHeight(id: string, height: number): void {
+    const node = findNode(id);
+    if (node?.type !== 'output') return;
+    node.listHeight = clampOutputListHeight(height, outputCardFields(nodes.value, node).length);
+  }
+
+  /** Collapses or expands every collapsible card at once (the Output keeps its own state). */
   function setAllCollapsed(collapsed: boolean): void {
     for (const node of nodes.value) {
       if (node.type === 'output') continue;
@@ -1265,6 +1380,18 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
     output.fieldLabelOverrides = { ...(output.fieldLabelOverrides ?? {}), [key]: label };
   }
 
+  /** Shows or hides output fields (the Visible column), by field row key. */
+  function setFieldVisibility(keys: string[], visible: boolean): void {
+    const output = nodes.value.find(isOutputNode);
+    if (!output) return;
+    const hidden = new Set(output.hiddenFieldKeys ?? []);
+    for (const key of keys) {
+      if (visible) hidden.delete(key);
+      else hidden.add(key);
+    }
+    output.hiddenFieldKeys = [...hidden];
+  }
+
   function setBulkFieldCapabilities(patch: Record<string, FieldCapabilities>): void {
     const output = nodes.value.find(isOutputNode);
     if (!output) return;
@@ -1296,9 +1423,13 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
     const activeFieldCount = (node: CanvasNode): number =>
       (node.fields ?? []).filter((field) => used.has(`${node.label}.${field.name}`)).length;
 
+    const listedCount = (node: CanvasNode): number => {
+      if (node.type === 'output') return outputCardFields(nodes.value, node).length;
+      return node.type === 'table' && node.collapsed ? activeFieldCount(node) : 0;
+    };
+
     const positions = computeLayout(nodes.value, {
-      sizeOf: (node) =>
-        nodeSize(node, node.type === 'table' && node.collapsed ? activeFieldCount(node) : 0),
+      sizeOf: (node) => nodeSize(node, listedCount(node)),
     });
 
     for (const node of nodes.value) {
@@ -1323,6 +1454,7 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
     // Continuous gestures: the UI commits once when the drag/resize ends.
     moveNode,
     setNodeWidth,
+    setOutputListHeight,
     commit,
     // Undo / redo
     undo,
@@ -1352,6 +1484,9 @@ export function useDataSourceCanvas(options: UseDataSourceCanvasOptions = {}) {
     updateCustomMetric: committing(updateCustomMetric),
     removeCustomMetric: committing(removeCustomMetric),
     setFieldLabel: committing(setFieldLabel),
+    setFieldVisibility: committing(setFieldVisibility),
+    setJoinDimension: committing(setJoinDimension),
+    setConditionEntity: committing(setConditionEntity),
     setBulkFieldCapabilities: committing(setBulkFieldCapabilities),
     setOutputTranslationFile: committing(setOutputTranslationFile),
     clear: committing(clear),
